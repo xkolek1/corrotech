@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="corrotech" uuid="fe0c84fc-f5b5-4d48-9732-21db85bfec12">
-      <driver-ref>sqlite.xerial</driver-ref>
+    <data-source source="LOCAL" name="defaultdb" uuid="d6cb61a9-2c99-4f92-83e2-48a1df03fa3e">
+      <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
-      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:C:\Users\xkolek1\PycharmProjects\PythonProject\corrotech.db</jdbc-url>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://pg-corro-cpq.b.aivencloud.com:25409/defaultdb?sslmode=require</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
-      <libraries>
-        <library>
-          <url>file://$APPLICATION_CONFIG_DIR$/jdbc-drivers/Xerial SQLiteJDBC/3.51.1/org/xerial/sqlite-jdbc/3.51.1.0/sqlite-jdbc-3.51.1.0.jar</url>
-        </library>
-      </libraries>
     </data-source>
   </component>
 </project>
