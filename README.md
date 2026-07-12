@@ -1,1 +1,1 @@
-CPQ for CORROTECH  OSTRAVA s.r.o.
+CPQ app for CORROTECH  OSTRAVA s.r.o.
