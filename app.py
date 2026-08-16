@@ -87,6 +87,15 @@ def load_pdf_hmoty():
     db_conn = get_db_connection()
     return pd.read_sql_query("SELECT id, cislo_odstinu, nazev, redidlo, susina FROM pdf_hmoty", db_conn)
 
+@st.cache_data(ttl=300)
+def load_client_invoices(client_ic):
+    db_conn = get_db_connection()
+    query = """
+        SELECT purchase_date, price, quantity 
+        FROM invoices 
+        WHERE client_ic = %s
+    """
+    return pd.read_sql_query(query, db_conn, params=(str(client_ic),))
 
 # =============================================================================
 # Auth Helpers (Authentication & User Management)
@@ -415,32 +424,68 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # =============================================================================
-# Sidebar Navigation & Logout
+# Sidebar Navigation & Logout (Minimalist & Material Icons)
 # =============================================================================
-# Levý postranní panel. Obsahuje uvítání, tlačítko pro odhlášení a přepínač stránek (radio button).
+
+# Totální kill textu v tlačítkách a vynucení centru
+st.markdown("""
+    <style>
+    /* Cílíme přímo na vnitřní kontejner tlačítka, který drží ikonu a text */
+    [data-testid="stSidebar"] div.stButton > button > div {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+    /* Úplně skryjeme textový prvek, ať nedeformuje rozložení ikony */
+    [data-testid="stSidebar"] div.stButton > button p {
+        display: none !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.sidebar.image("img/corro.svg", use_container_width=True)
 st.sidebar.markdown("---")
-st.sidebar.title(f"{st.session_state['user_name']}")
-st.sidebar.write(f"Role: {st.session_state['user_role']}")
 
-if st.sidebar.button("Odhlásit se"):
-    # Při odhlášení smazeme token z DB i cookie z prohlížeče. Plus vyčistíme session_state.
-    if st.session_state.get("user_id"):
-        clear_session_token(st.session_state["user_id"])
-    if cookie_manager.get("cpq_session"):
-        cookie_manager.delete("cpq_session")
-    st.session_state.clear()
-    time.sleep(0.2)
-    st.rerun()
+st.sidebar.markdown(f"**{st.session_state['user_name']}** ({st.session_state['user_role']})")
+
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "Dashboard"
+
+nav_cols = st.sidebar.columns(4 if st.session_state["user_role"] == "Admin" else 3)
+
+dash_type = "primary" if st.session_state.current_page == "Dashboard" else "secondary"
+prof_type = "primary" if st.session_state.current_page == "Můj profil" else "secondary"
+admin_type = "primary" if st.session_state.current_page == "Správa systému (Admin)" else "secondary"
+
+with nav_cols[0]:
+    # Různý počet mezer pro každé tlačítko jako ochrana proti DuplicateWidgetID
+    if st.button(" ", icon=":material/dashboard:", help="Dashboard", use_container_width=True, type=dash_type):
+        st.session_state.current_page = "Dashboard"
+        st.rerun()
+
+with nav_cols[1]:
+    if st.button("  ", icon=":material/person:", help="Můj profil", use_container_width=True, type=prof_type):
+        st.session_state.current_page = "Můj profil"
+        st.rerun()
+
+if st.session_state["user_role"] == "Admin":
+    with nav_cols[2]:
+        if st.button("   ", icon=":material/settings:", help="Správa systému (Admin)", use_container_width=True, type=admin_type):
+            st.session_state.current_page = "Správa systému (Admin)"
+            st.rerun()
+
+with nav_cols[-1]:
+    if st.button("    ", icon=":material/logout:", help="Odhlásit se", use_container_width=True, type="secondary"):
+        if st.session_state.get("user_id"):
+            clear_session_token(st.session_state["user_id"])
+        if cookie_manager.get("cpq_session"):
+            cookie_manager.delete("cpq_session")
+        st.session_state.clear()
+        time.sleep(0.2)
+        st.rerun()
 
 st.sidebar.markdown("---")
 
-nav_options = ["Dashboard", "Můj profil"]
-# Pokud je borec Admin, jednoduše mu přidáme další položku do navigačního menu.
-if st.session_state["user_role"] == "Admin":
-    nav_options.append("Správa systému (Admin)")
-
-page = st.sidebar.radio("Navigace", nav_options)
+page = st.session_state.current_page
 
 # =============================================================================
 # Main App Routing (Pages)
@@ -471,7 +516,7 @@ if page == "Dashboard":
     # a poskládáme z něj metriky (IČ, obrat, ziskovost).
     if selected_client:
         client_row = df_clients[df_clients['name'] == selected_client].iloc[0]
-        st.title(f"🏢 {selected_client}")
+        st.title(f"{selected_client}")  # Odstraněno emoji budovy
 
         info_col1, info_col2, info_col3 = st.columns(3)
         with info_col1:
@@ -495,10 +540,62 @@ if page == "Dashboard":
         dealer_str = str(raw_dealer).strip() if pd.notna(raw_dealer) else ""
         st.markdown(f"**Dealer:** {dealer_str if dealer_str else '/'}")
 
+        st.markdown("---")
+
+        # ---- Měsíční obrat (Time-series chart) ----
+        df_inv = load_client_invoices(client_row['ic'])
+
+        start_date = '2022-01-01'
+        end_date = datetime.date.today()
+        all_months = pd.date_range(start=start_date, end=end_date, freq='MS')
+
+        cz_months = {
+            1: 'Led', 2: 'Úno', 3: 'Bře', 4: 'Dub', 5: 'Kvě', 6: 'Čvn',
+            7: 'Čvc', 8: 'Srp', 9: 'Zář', 10: 'Říj', 11: 'Lis', 12: 'Pro'
+        }
+
+        if not df_inv.empty:
+            df_inv['purchase_date'] = pd.to_datetime(df_inv['purchase_date'])
+            df_inv['turnover'] = df_inv['price'] * df_inv['quantity']
+            df_inv['month_start'] = df_inv['purchase_date'].dt.to_period('M').dt.to_timestamp()
+
+            monthly_sales = df_inv.groupby('month_start')['turnover'].sum().reindex(all_months,
+                                                                                    fill_value=0).reset_index()
+            monthly_sales.columns = ['month', 'turnover']
+        else:
+            monthly_sales = pd.DataFrame({'month': all_months, 'turnover': 0})
+
+        # POZOR: Následující kód musí být přesně na této úrovni odsazení (mimo podmínku if/else)
+        monthly_sales['cz_month'] = monthly_sales['month'].dt.month.map(cz_months)
+        monthly_sales['year'] = monthly_sales['month'].dt.year.astype(str)
+
+        st.subheader("Vývoj měsíčního obratu")
+
+        fig_sales = go.Figure()
+        fig_sales.add_trace(go.Bar(
+            x=[monthly_sales['year'].tolist(), monthly_sales['cz_month'].tolist()],
+            y=monthly_sales['turnover'].tolist(),
+            marker_color='#1f77b4',
+            text=monthly_sales['turnover'].apply(lambda x: f"{x:,.0f} Kč".replace(",", " ") if x > 0 else ""),
+            textposition='auto'
+        ))
+
+        fig_sales.update_layout(
+            xaxis_title="",
+            yaxis_title="Obrat (Kč)",
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=350,
+            xaxis=dict(
+                type='multicategory',
+                tickangle=-45
+            )
+        )
+        st.plotly_chart(fig_sales, use_container_width=True)
+
     st.markdown("---")
 
     # ---- Kalkulace ceny (Pricing Tool) ----
-    st.subheader("🔍 Kalkulace cenové nabídky")
+    st.subheader("Kalkulace cenové nabídky")
     product_options = [""] + df_products['name'].tolist()
     selected_product = st.selectbox("Vyberte produkt k nacenění:", product_options, index=0)
 
@@ -566,14 +663,14 @@ if page == "Dashboard":
         met_col3.metric("Maloobchodní cena (Max)", f"{p_retail:,.0f} Kč".replace(",", " "))
 
         st.success(
-            f"💡 **Tip pro obchod:** Ideální prostor pro vyjednávání (zelená zóna na grafu) "
+            f"**Tip pro obchod:** Ideální prostor pro vyjednávání (zelená zóna na grafu) "
             f"je mezi **{min_range:,.0f} Kč** a **{max_range:,.0f} Kč**.".replace(",", " ")
         )
 
     st.markdown("---")
 
     # ---- Generátor PDF (PDF Tool) ----
-    st.subheader("📄 Generátor PDF Kalkulace")
+    st.subheader("Generátor PDF Kalkulace")
 
     # Všechna hlavičková data, která padnou rovnou do tabulky nahoru do PDF.
     with st.expander("Nastavení projektu a dokumentu", expanded=True):
@@ -656,7 +753,7 @@ if page == "Dashboard":
         st.markdown("---")
 
     # Přidání defaultního nového záznamu na konec seznamu barev.
-    if st.button("➕ Přidat vrstvu"):
+    if st.button("Přidat vrstvu", icon=":material/add:"):
         st.session_state.pdf_rows.append({
             'typ': 'Základní', 'hmota': hmoty_options[0] if hmoty_options else "",
             'odstin': '', 'dft': 100.0, 'plocha': 100.0, 'c_l': 0.0, 'redeni': 5.0
@@ -664,7 +761,7 @@ if page == "Dashboard":
         st.rerun()
 
     # ---- Vlastní generování PDF přes vnější skript KalkulacePDF ----
-    if st.button("🖨️ Vygenerovat PDF", type="primary"):
+    if st.button("Vygenerovat PDF", type="primary", icon=":material/picture_as_pdf:"):
         # Spojíme všechny nenulové položky přípravy povrchu do jedné lišty textů.
         final_prep_texts = [p for p in [prep_a, prep_b, prep_c, prep_d, prep_e] if p.strip()] + prep_f
 
@@ -732,10 +829,11 @@ if page == "Dashboard":
 
         file_prefix = selected_client if selected_client else "Kalkulace"
         st.download_button(
-            label="📥 Stáhnout PDF Kalkulaci",
+            label="Stáhnout PDF Kalkulaci",
             data=pdf_bytes,
             file_name=f"{file_prefix}.pdf",
-            mime="application/pdf"
+            mime="application/pdf",
+            icon = ":material/download:"
         )
 
 
@@ -743,7 +841,7 @@ elif page == "Můj profil":
     # =========================================================================
     # Page: Profile
     # =========================================================================
-    st.title("👤 Můj profil")
+    st.title("Můj profil")
     st.write("Zde si můžeš změnit své heslo pro přístup do systému.")
 
     with st.form("change_my_password_form"):
@@ -772,7 +870,7 @@ elif page == "Správa systému (Admin)":
     # =========================================================================
     # Page: Admin Section
     # =========================================================================
-    st.title("⚙️ Správa systému")
+    st.title("Správa systému")
 
     # Klasicky vytáhneme base tabulky - protože jsi Admin, uvidíš i surový data.
     df_users = load_users()
@@ -780,7 +878,7 @@ elif page == "Správa systému (Admin)":
     df_products = load_products()
 
     # Použití tabů pro zpřehlednění UI - v administraci by bez nich byla hrozná nudle (stránka dlouhá jako tejden).
-    main_tabs = st.tabs(["👥 Uživatelé", "🏢 Firmy", "🎨 Produkty", "📄 Prodeje"])
+    main_tabs = st.tabs(["Uživatelé", "Firmy", "Produkty", "Prodeje"])
 
     # -------------------------------------------------------------------------
     # TAB 1: Uživatele
@@ -1001,7 +1099,7 @@ elif page == "Správa systému (Admin)":
                                                                     'zisk' in str(c).lower() and 'bez dph' in str(
                                                                         c).lower()])
 
-                            if st.button("🚀 Spustit import a sečíst napříč listy", type="primary"):
+                            if st.button("Spustit import...", type="primary", icon=":material/rocket_launch:"):
                                 runtime_db_conn = get_db_connection()
                                 clients_dict = {}
 
@@ -1070,7 +1168,7 @@ elif page == "Správa systému (Admin)":
 
                                 load_clients.clear()
                                 st.success(
-                                    f"🎉 Úspěšně naimportováno / zaktualizováno {imported_count} unikátních firem (sloučeno ze {len(selected_sheets)} listů)!")
+                                    f"Úspěšně naimportováno / zaktualizováno {imported_count} unikátních firem (sloučeno ze {len(selected_sheets)} listů)!")
                                 st.rerun()
 
                 except Exception as ex:
@@ -1127,85 +1225,87 @@ elif page == "Správa systému (Admin)":
                 st.success("Smazáno.")
                 st.rerun()
 
-    # -------------------------------------------------------------------------
-    # TAB 4: Prodeje / Invoices (Sales Import)
-    # -------------------------------------------------------------------------
-    # Tady se dají uploadovat surové exproty faktur a prodejů ze systému typu ESO9, atp.
-    # Databáze má tabulku s unikátní kombinací (číslo dokladu + kód zboží), takže brání duplikacím.
-    with main_tabs[3]:
-        st.subheader("Import prodejů z Excelu")
-        st.info(
-            "Nahraj soubor s prodeji (např. ESO9_Online_CO_PřehledProdeje.xlsx). Záznamy, které už v databázi jsou (shoda čísla Dokladu a Kódu zboží), se automaticky přeskočí.")
+        # -------------------------------------------------------------------------
+        # TAB 4: Prodeje / Invoices (Sales Import)
+        # -------------------------------------------------------------------------
+        with main_tabs[3]:
+            st.subheader("Import prodejů z Excelu")
+            st.info(
+                "Nahraj soubor s prodeji (např. ESO9_Online_CO_PřehledProdeje.xlsx). Záznamy, které už v databázi jsou (shoda čísla Dokladu a Kódu zboží), se automaticky přeskočí.")
 
-        uploaded_sales = st.file_uploader("Nahrát Excel s prodeji", type=["xlsx", "xls"], key="sales_uploader")
+            uploaded_sales = st.file_uploader("Nahrát Excel s prodeji", type=["xlsx", "xls"], key="sales_uploader")
 
-        if uploaded_sales:
-            try:
-                # Natáhneme excel do dataframe. Pro import prodejů očekáváme, že má nějaké ty pevné formáty.
-                df_sales = pd.read_excel(uploaded_sales)
+            if uploaded_sales:
+                try:
+                    # Natáhneme excel do dataframe.
+                    df_sales = pd.read_excel(uploaded_sales)
 
-                # Kontrola přítomnosti absolutně nutných sloupů. Pokud to chybí, vyřveme uživatele a dál nepokračujeme.
-                required_cols = ['Doklad', 'Kód subjektu', 'Jednotková cena', 'Kód zboží', 'Datum', 'Množství']
-                missing_cols = [c for c in required_cols if c not in df_sales.columns]
+                    required_cols = ['Doklad', 'Kód subjektu', 'Jednotková cena', 'Kód zboží', 'Datum', 'Množství']
+                    missing_cols = [c for c in required_cols if c not in df_sales.columns]
 
-                if missing_cols:
-                    st.error(f"V Excelu chybí tyto povinné sloupce: {', '.join(missing_cols)}. Zkontroluj názvy.")
-                else:
-                    # Rychlý náhled prvních tří řádků pro kontrolu
-                    st.write(f"Náhled dat ({len(df_sales)} řádků):")
-                    st.dataframe(df_sales.head(3))
+                    if missing_cols:
+                        st.error(f"V Excelu chybí tyto povinné sloupce: {', '.join(missing_cols)}. Zkontroluj názvy.")
+                    else:
+                        st.write(f"Náhled dat ({len(df_sales)} řádků):")
+                        st.dataframe(df_sales.head(3))
 
-                    if st.button("🚀 Spustit import prodejů", type="primary"):
-                        sales_db_conn = get_db_connection()
-                        imported_count = 0
-                        skipped_count = 0
+                        if st.button("Spustit import prodejů", type="primary", icon=":material/cloud_upload:"):
+                            sales_db_conn = get_db_connection()
+                            imported_count = 0
+                            skipped_count = 0
+                            fk_error_count = 0
 
-                        with sales_db_conn.cursor() as s_cursor:
-                            # Iteruje všechny řádky, naformátuje a tahá čísla.
-                            for index, row in df_sales.iterrows():
-                                doklad = str(row['Doklad']).strip()
-                                excel_prod_id = str(row['Kód zboží']).strip()
+                            with sales_db_conn.cursor() as s_cursor:
+                                for index, row in df_sales.iterrows():
+                                    doklad = str(row['Doklad']).strip()
+                                    excel_prod_id = str(row['Kód zboží']).strip()
 
-                                # Pokud chybí to nejdůležitější (doklad, zboží), nemá smysl to prát do databáze
-                                if not doklad or doklad.lower() == 'nan' or not excel_prod_id or excel_prod_id.lower() == 'nan':
-                                    continue
+                                    if not doklad or doklad.lower() == 'nan' or not excel_prod_id or excel_prod_id.lower() == 'nan':
+                                        continue
 
-                                client_ic = str(row['Kód subjektu']).strip() if pd.notna(
-                                    row['Kód subjektu']) else ""
-                                price = float(row['Jednotková cena']) if pd.notna(row['Jednotková cena']) else 0.0
-                                quantity = float(row['Množství']) if pd.notna(row['Množství']) else 0.0
+                                    client_ic = str(row['Kód subjektu']).strip() if pd.notna(
+                                        row['Kód subjektu']) else ""
 
-                                # Zkouší formátovat datové typy.
-                                try:
-                                    purchase_date = pd.to_datetime(row['Datum']).date()
-                                except Exception:
-                                    purchase_date = None
+                                    # Ochrana typů: databáze chce int4, tak to přeložíme z float do int
+                                    try:
+                                        price = int(round(float(row['Jednotková cena']))) if pd.notna(
+                                            row['Jednotková cena']) else 0
+                                        quantity = int(round(float(row['Množství']))) if pd.notna(
+                                            row['Množství']) else 0
+                                    except ValueError:
+                                        price, quantity = 0, 0
 
-                                # WHERE NOT EXISTS: Překontroluje přímo v SQL dotazu,
-                                # jestli už tento doklad pro dané zboží není nasazen. Pokud jo, neinsertuje to nic.
-                                s_cursor.execute('''
-                                                 INSERT INTO invoices (id, client_ic, price, product_id, purchase_date, quantity)
-                                                 SELECT %s,
-                                                        %s,
-                                                        %s,
-                                                        %s,
-                                                        %s,
-                                                        %s WHERE NOT EXISTS (SELECT 1
-                                                                 FROM invoices
-                                                                 WHERE id = %s AND product_id = %s)
-                                                 ''',
-                                                 (doklad, client_ic, price, excel_prod_id, purchase_date, quantity,
-                                                  doklad,
-                                                  excel_prod_id))
+                                    try:
+                                        purchase_date = pd.to_datetime(row['Datum']).date()
+                                    except Exception:
+                                        purchase_date = None
 
-                                # cursor.rowcount nám řekne, kolik řádků reálně prošlo do DB (1 = úspěch, 0 = skipplo se to)
-                                if s_cursor.rowcount > 0:
-                                    imported_count += 1
-                                else:
-                                    skipped_count += 1
+                                    # Obalení do try-except chrání import před pádem, když v DB chybí IČ klienta nebo Kód produktu
+                                    try:
+                                        # Moderní a rychlý Postgres upsert zápis
+                                        s_cursor.execute('''
+                                                         INSERT INTO invoices (id, client_ic, price, product_id, purchase_date, quantity)
+                                                         VALUES (%s, %s, %s, %s, %s, %s)
+                                                         ON CONFLICT (id, product_id) DO NOTHING
+                                                         ''',
+                                                         (doklad, client_ic, price, excel_prod_id, purchase_date,
+                                                          quantity))
 
-                        st.success(
-                            f"Hotovo! Naimportováno {imported_count} nových záznamů. Přeskočeno {skipped_count} existujících duplikátů.")
+                                        if s_cursor.rowcount > 0:
+                                            imported_count += 1
+                                        else:
+                                            skipped_count += 1
+                                    except psycopg2.IntegrityError:
+                                        # Narazili jsme na to, že client_ic nebo product_id zatím v mateřských tabulkách vůbec neexistuje
+                                        fk_error_count += 1
 
-            except Exception as e:
-                st.error(f"Během zpracování Excelu došlo k chybě: {e}")
+                            st.success(
+                                f"Hotovo! Naimportováno: {imported_count} nových záznamů. Přeskočeno duplikátů: {skipped_count}.")
+
+                            # Informujeme uživatele, pokud databáze nějaké prodeje blokla
+                            if fk_error_count > 0:
+                                st.warning(
+                                    f"⚠️ {fk_error_count} záznamů bylo zahozeno. Obsahovaly 'IČ klienta' nebo 'Kód zboží', které zatím nemáš uložené v záložkách Firmy nebo Produkty.")
+
+                except Exception as e:
+                    st.error(f"Během zpracování Excelu došlo k chybě: {e}")
