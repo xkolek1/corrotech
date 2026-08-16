@@ -1,4 +1,4 @@
-# CORROTECH CPQ
+# CORROTECH CPQ (work in progress)
 
 ## Overview
 
