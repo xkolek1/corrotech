@@ -52,7 +52,7 @@ def get_db_connection():
         st.stop()
 
 
-"""Načítání dat s cache pro jednotlivé části aplikace."""
+# Načítání dat s cache pro jednotlivé části aplikace.
 
 @st.cache_data(ttl=300)
 def load_monthly_sales():
@@ -166,7 +166,7 @@ def load_client_invoices(client_ic):
     """
     return pd.read_sql_query(query, db_conn, params=(str(client_ic),))
 
-"""Pomocníci pro autentizaci a správu uživatelů."""
+# Pomocníci pro autentizaci a správu uživatelů.
 
 def authenticate_user(email, password):
     """Ověří přihlašovací údaje a vrátí základní údaje o uživateli.
@@ -250,7 +250,7 @@ def delete_user(user_id):
     load_users.clear()
 
 
-"""CRUD pomocníci pro klienty a produkty."""
+# CRUD pomocníci pro klienty a produkty.
 
 def add_client(ic, name, total_sales, total_profitability, dealer):
     """Vloží nového klienta do databáze."""
@@ -323,7 +323,7 @@ def delete_product(prod_id):
     load_products.clear()
 
 
-"""Pomocníci pro session tokeny a trvalé přihlášení."""
+# Pomocníci pro session tokeny a trvalé přihlášení.
 
 def set_session_token(user_id, token):
     """Uloží session token uživatele do databáze."""
