@@ -397,53 +397,38 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Zobrazí PDF přes bezpečný Blob URL, aby to prošlo přes agresivní prohlížeče."""
-    b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
+    """Cross-browser PDF display with robust fallbacks for Streamlit Cloud."""
+    st.subheader("Náhled PDF")
 
-    # JavaScript, který převede Base64 na virtuální soubor (Blob) v paměti prohlížeče.
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ margin: 0; padding: 0; overflow: hidden; }}
-            iframe {{ width: 100vw; height: 100vh; border: none; }}
-        </style>
-    </head>
-    <body>
-        <script>
-            // Dekódování Base64 dat do binárního pole
-            const b64Data = '{b64_pdf}';
-            const byteCharacters = atob(b64Data);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {{
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }}
-            const byteArray = new Uint8Array(byteNumbers);
+    # 1) Preferred native Streamlit renderer (newer Streamlit versions)
+    rendered = False
+    try:
+        if hasattr(st, "pdf"):
+            st.pdf(pdf_binary)  # type: ignore[attr-defined]
+            rendered = True
+    except Exception:
+        rendered = False
 
-            // Vytvoření virtuálního souboru a URL
-            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
-            const blobUrl = URL.createObjectURL(blob);
+    # 2) Fallback renderer for browsers where embedded PDF is blocked
+    if not rendered:
+        b64_pdf = base64.b64encode(pdf_binary).decode("utf-8")
+        pdf_data_url = f"data:application/pdf;base64,{b64_pdf}"
 
-            // Vytvoření iframu a předání Blob URL (prohlížeč toto neblokuje)
-            const iframe = document.createElement('iframe');
-            iframe.src = blobUrl;
-            document.body.appendChild(iframe);
-        </script>
-    </body>
-    </html>
-    """
+        st.info("Vestavěný náhled PDF je v tomto prohlížeči omezen. Použijte otevření v nové kartě nebo stažení.")
 
-    # Vykreslení přes dedikovanou komponentu Streamlitu
-    components.html(html_code, height=800)
+        st.markdown(
+            f'<a href="{pdf_data_url}" target="_blank" rel="noopener noreferrer">📄 Otevřít PDF v nové kartě</a>',
+            unsafe_allow_html=True,
+        )
 
+    # 3) Guaranteed fallback in all cases
     st.download_button(
         label="Stáhnout PDF do zařízení",
         data=pdf_binary,
         file_name=filename,
         mime="application/pdf",
         icon=":material/download:",
-        key=key
+        key=key,
     )
 
 # =============================================================================
