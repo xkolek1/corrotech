@@ -1387,21 +1387,20 @@ elif page == "Archiv nabídek":
                 st.rerun()
 
 
-    def show_pdf(pdf_binary, filename="Kalkulace.pdf"):
+    def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
         """Zobrazí PDF dokument přímo v prohlížeči a přidá možnost stažení."""
         b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-        # Použití iframe je pro Base64 data v moderních prohlížečích spolehlivější než embed
         pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
 
-        # Přidání tlačítka pro přímé stažení pod náhled
         st.download_button(
             label="Stáhnout PDF do zařízení",
             data=pdf_binary,
             file_name=filename,
             mime="application/pdf",
-            icon=":material/download:"
+            icon=":material/download:",
+            key=key
         )
 
     tab1, tab2, tab3 = st.tabs(["Moje nabídky", "Sdílené (Finální)", "Vyhledat podle kódu (Ověření)"])
@@ -1454,7 +1453,9 @@ elif page == "Archiv nabídek":
                         confirm_delete_dialog(selected_my_id)
 
                 st.markdown("---")
-                show_pdf(bytes(doc_detail['pdf_file']))
+                # Místo původního volání dej toto:
+                show_pdf(bytes(doc_detail['pdf_file']), filename=f"Kalkulace_{doc['client_name']}.pdf",
+                         key=f"dl_my_{selected_my_id}")
         else:
             st.info("Zatím jsi nevygeneroval/a žádné nabídky.")
 
@@ -1479,7 +1480,9 @@ elif page == "Archiv nabídek":
                     shared_detail = v_cursor.fetchone()
 
                 st.markdown("---")
-                show_pdf(bytes(shared_detail['pdf_file']))
+                # Místo původního volání dej toto:
+                show_pdf(bytes(shared_detail['pdf_file']), filename=f"Kalkulace_{doc['client_name']}.pdf",
+                         key=f"dl_shared_{selected_shared_id}")
         else:
             st.info("Nikdo zatím nesdílel žádnou finální nabídku.")
 
@@ -1498,7 +1501,9 @@ elif page == "Archiv nabídek":
 
                 if result:
                     st.success(f"✅ Dokument nalezen (Klient: {result['client_name']}, Autor: {result['author_email']})")
-                    show_pdf(bytes(result['pdf_file']))
+                    # Místo původního volání dej toto:
+                    show_pdf(bytes(result['pdf_file']), filename=f"Original_{result['client_name']}.pdf",
+                             key=f"dl_verify_{verify_code}")
                 else:
                     st.error("❌ Dokument s tímto kódem neexistuje.")
             else:
