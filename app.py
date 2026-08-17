@@ -21,11 +21,7 @@ from pdf_generator import KalkulacePDF
 DATABASE_URL = st.secrets["postgres"]["DATABASE_URL"]
 
 def validate_db_connection(db_conn):
-    """Ověří, že uložené databázové spojení je stále použitelné.
-
-    Funkce je určená pro `st.cache_resource(validate=...)`. Vrací `True`, jen
-    pokud je spojení otevřené a lze přes něj provést jednoduchý testovací dotaz.
-    """
+    """Ověří, že uložené databázové spojení je stále použitelné."""
     try:
         if db_conn.closed != 0:
             return False
@@ -38,11 +34,7 @@ def validate_db_connection(db_conn):
 
 @st.cache_resource(validate=validate_db_connection)
 def get_db_connection():
-    """Vytvoří nebo vrátí sdílené připojení k PostgreSQL.
-
-    Připojení je cachované, aby se databáze zbytečně nepřipojovala při každém
-    překreslení aplikace. Při chybě zobrazí uživateli hlášku a aplikaci ukončí.
-    """
+    """Vytvoří nebo vrátí sdílené připojení k PostgreSQL."""
     try:
         db_conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         db_conn.autocommit = True
@@ -52,11 +44,11 @@ def get_db_connection():
         st.stop()
 
 
-# Načítání dat s cache pro jednotlivé části aplikace.
-
+# =============================================================================
+# Cached Data Loading Functions
+# =============================================================================
 @st.cache_data(ttl=300)
 def load_monthly_sales():
-    """Načte měsíční obrat klientů pro přehledový dashboard."""
     db_conn = get_db_connection()
     query = """
             SELECT c.ic, \
@@ -73,15 +65,12 @@ def load_monthly_sales():
 
 @st.cache_data(ttl=300)
 def load_dealers_comparison():
-    """Načte podklady pro graf porovnání dealerů po měsících."""
     db_conn = get_db_connection()
     query = """
         SELECT 
             COALESCE(NULLIF(TRIM(c.dealer), ''), 'Bez dealera') AS dealer,
             TO_CHAR(DATE_TRUNC('month', i.purchase_date), 'YYYY-MM') AS month,
             SUM(i.price * i.quantity) AS turnover,
-            -- PŘÍPRAVA NA ZISK: Zatím natvrdo počítáme 20% marži jako mock data.
-            -- Až to budeme mít ostré, dáme sem něco jako: SUM((i.price - p.storage_price) * i.quantity)
             SUM(i.price * i.quantity) * 0.20 AS profit
         FROM invoices i
         JOIN clients c ON i.client_ic = c.ic
@@ -93,11 +82,6 @@ def load_dealers_comparison():
 
 @st.cache_data(ttl=300)
 def load_client_items_by_months(client_ic, selected_months_tuple):
-    """Načte položky klienta za vybrané měsíce.
-
-    Měsíce jsou předávány jako tuple, aby šel výsledek bezpečně cachovat.
-    Když není vybrán žádný měsíc, vrací prázdný DataFrame.
-    """
     db_conn = get_db_connection()
     if not selected_months_tuple:
         return pd.DataFrame()
@@ -117,9 +101,9 @@ def load_client_items_by_months(client_ic, selected_months_tuple):
     """
     params = [str(client_ic)] + list(selected_months_tuple)
     return pd.read_sql_query(query, db_conn, params=tuple(params))
+
 @st.cache_data(ttl=300)
 def load_clients():
-    """Načte přehled všech klientů včetně obratu a ziskovosti."""
     db_conn = get_db_connection()
     query = """
         SELECT 
@@ -137,27 +121,23 @@ def load_clients():
 
 @st.cache_data(ttl=300)
 def load_products():
-    """Načte všechny produkty a jejich skladové ceny."""
     db_conn = get_db_connection()
     return pd.read_sql_query("SELECT id, name, storage_price FROM products", db_conn)
 
 
 @st.cache_data(ttl=300)
 def load_users():
-    """Načte seznam uživatelů pro administraci systému."""
     db_conn = get_db_connection()
     return pd.read_sql_query("SELECT id, email, name, role, phone_number FROM users", db_conn)
 
 
 @st.cache_data(ttl=300)
 def load_pdf_hmoty():
-    """Načte číselník nátěrových hmot používaný v generátoru PDF."""
     db_conn = get_db_connection()
     return pd.read_sql_query("SELECT id, cislo_odstinu, nazev, redidlo, susina FROM pdf_hmoty", db_conn)
 
 @st.cache_data(ttl=300)
 def load_client_invoices(client_ic):
-    """Načte všechny faktury konkrétního klienta."""
     db_conn = get_db_connection()
     query = """
         SELECT purchase_date, price, quantity 
@@ -166,15 +146,11 @@ def load_client_invoices(client_ic):
     """
     return pd.read_sql_query(query, db_conn, params=(str(client_ic),))
 
-# Pomocníci pro autentizaci a správu uživatelů.
 
+# =============================================================================
+# Auth & User Management Helpers
+# =============================================================================
 def authenticate_user(email, password):
-    """Ověří přihlašovací údaje a vrátí základní údaje o uživateli.
-
-    Uživatel se dohledá podle e-mailu, heslo se porovná přes bcrypt a při
-    úspěchu se vrátí slovník použitelný pro `st.session_state`. Při neúspěchu
-    funkce vrátí `None`.
-    """
     db_conn = get_db_connection()
     with db_conn.cursor(cursor_factory=RealDictCursor) as db_cursor:
         db_cursor.execute("SELECT id, name, role, password_hash, phone_number FROM users WHERE email = %s", (email,))
@@ -197,11 +173,6 @@ def authenticate_user(email, password):
 
 
 def add_user(user_id, email, name, role, phone_number, password):
-    """Vloží nového uživatele do databáze.
-
-    Heslo je před uložením zahashováno pomocí bcryptu. Funkce vrátí `True` při
-    úspěchu a `False` při porušení unikátního omezení.
-    """
     salt = bcrypt.gensalt()
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
     try:
@@ -217,12 +188,6 @@ def add_user(user_id, email, name, role, phone_number, password):
 
 
 def update_user(current_id, new_id, email, name, role, phone_number, new_password=None):
-    """Aktualizuje existujícího uživatele.
-
-    Když je předané nové heslo, uloží se také jeho hash. Pokud heslo chybí,
-    ponechá se původní hodnota beze změny. Funkce vrátí `True` při úspěchu a
-    `False` při kolizi unikátních hodnot.
-    """
     try:
         db_conn = get_db_connection()
         with db_conn.cursor() as db_cursor:
@@ -243,17 +208,16 @@ def update_user(current_id, new_id, email, name, role, phone_number, new_passwor
 
 
 def delete_user(user_id):
-    """Odstraní uživatele podle jeho identifikátoru."""
     db_conn = get_db_connection()
     with db_conn.cursor() as db_cursor:
         db_cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
     load_users.clear()
 
 
-# CRUD pomocníci pro klienty a produkty.
-
+# =============================================================================
+# CRUD pro klienty a produkty
+# =============================================================================
 def add_client(ic, name, total_sales, total_profitability, dealer):
-    """Vloží nového klienta do databáze."""
     try:
         db_conn = get_db_connection()
         with db_conn.cursor() as db_cursor:
@@ -267,7 +231,6 @@ def add_client(ic, name, total_sales, total_profitability, dealer):
 
 
 def update_client(ic, name, total_sales, total_profitability, dealer):
-    """Aktualizuje údaje klienta podle IČ."""
     try:
         db_conn = get_db_connection()
         with db_conn.cursor() as db_cursor:
@@ -281,7 +244,6 @@ def update_client(ic, name, total_sales, total_profitability, dealer):
 
 
 def delete_client(ic):
-    """Smaže klienta podle IČ a vyprázdní cache přehledu klientů."""
     db_conn = get_db_connection()
     with db_conn.cursor() as db_cursor:
         db_cursor.execute("DELETE FROM clients WHERE ic=%s", (ic,))
@@ -289,7 +251,6 @@ def delete_client(ic):
 
 
 def add_product(name, storage_price):
-    """Vloží nový produkt do databáze."""
     try:
         db_conn = get_db_connection()
         with db_conn.cursor() as db_cursor:
@@ -302,7 +263,6 @@ def add_product(name, storage_price):
 
 
 def update_product(prod_id, name, storage_price):
-    """Aktualizuje název a skladovou cenu produktu."""
     try:
         db_conn = get_db_connection()
         with db_conn.cursor() as db_cursor:
@@ -316,17 +276,16 @@ def update_product(prod_id, name, storage_price):
 
 
 def delete_product(prod_id):
-    """Odstraní produkt podle jeho ID."""
     db_conn = get_db_connection()
     with db_conn.cursor() as db_cursor:
         db_cursor.execute("DELETE FROM products WHERE id = %s", (prod_id,))
     load_products.clear()
 
 
-# Pomocníci pro session tokeny a trvalé přihlášení.
-
+# =============================================================================
+# Session Token Helpers
+# =============================================================================
 def set_session_token(user_id, token):
-    """Uloží session token uživatele do databáze."""
     db_conn = get_db_connection()
     with db_conn.cursor() as db_cursor:
         db_cursor.execute("UPDATE users SET session_token = %s WHERE id = %s", (token, user_id))
@@ -334,7 +293,6 @@ def set_session_token(user_id, token):
 
 
 def clear_session_token(user_id):
-    """Vymaže session token uživatele v databázi."""
     db_conn = get_db_connection()
     with db_conn.cursor() as db_cursor:
         db_cursor.execute("UPDATE users SET session_token = NULL WHERE id = %s", (user_id,))
@@ -343,11 +301,6 @@ def clear_session_token(user_id):
 
 @lru_cache(maxsize=128)
 def get_user_by_token(token):
-    """Vrátí uživatele odpovídajícího session tokenu.
-
-    Funkce slouží pro automatické přihlášení z cookie. Pokud token neexistuje
-    nebo neodpovídá žádnému uživateli, vrátí `None`.
-    """
     db_conn = get_db_connection()
     with db_conn.cursor(cursor_factory=RealDictCursor) as db_cursor:
         db_cursor.execute("SELECT id, email, name, role, phone_number FROM users WHERE session_token = %s", (token,))
@@ -361,8 +314,9 @@ def get_user_by_token(token):
     return None
 
 
-# Surface preparation constants
-
+# =============================================================================
+# Konstanty (Texty pro PDF)
+# =============================================================================
 PREP_A = [
     "",
     "Odstraňte olej a mastnotu vhodným detergentem. Soli a ostatní nečistoty odstraňte omytím vysokotlakou vodou. Po oschnutí otryskejte na Sa 2 1/2 dle ISO 8501-1.",
@@ -406,7 +360,9 @@ PREP_F = [
     "Všechny nepřilnavé staré nátěry musí být odstraněny a vzniklé ostré přechody se musí zabrousit do ztracena. Pevně přilnavý nátěr je nutné zdrsnit pro zajištění přilnavosti."
 ]
 
+# =============================================================================
 # App initialization and state management
+# =============================================================================
 st.set_page_config(page_title="CORROTECH CPQ", page_icon="img/corro-icon.svg", layout="wide")
 
 if "authenticated" not in st.session_state:
@@ -436,17 +392,28 @@ if not st.session_state["authenticated"]:
             })
             st.rerun()
 
+# =============================================================================
+# Helper function: Universal PDF Display
+# =============================================================================
+def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
+    """Zobrazí PDF dokument přímo v prohlížeči přes iframe a přidá možnost bezpečného stažení."""
+    b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
+    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
+    st.download_button(
+        label="Stáhnout PDF do zařízení",
+        data=pdf_binary,
+        file_name=filename,
+        mime="application/pdf",
+        icon=":material/download:",
+        key=key
+    )
 
 # =============================================================================
-# Login form
+# Login & Public Pages
 # =============================================================================
 def login_form():
-    """Vykreslí přihlašovací formulář a zpracuje přihlášení.
-
-    Formulář podporuje běžné přihlášení i volbu trvalého přihlášení pomocí
-    cookie. Po úspěchu aktualizuje session state a přepne aplikaci do hlavního
-    režimu.
-    """
     _logo1, _logo2, _logo3 = st.columns([1, 1, 1])
     with _logo2:
         st.image("img/corro.svg", use_container_width=True)
@@ -484,7 +451,6 @@ def login_form():
 
 
 def render_verify_page():
-    """Vykreslí veřejnou stránku pro ověření pravosti PDF dokumentu."""
     st.title("Ověření pravosti kalkulace (PDF)")
     st.write(
         "Zadejte kód (Elektronickou stopu dokumentu / ID) z patičky PDF. Systém ověří pravost a otevře originální dokument.")
@@ -506,11 +472,7 @@ def render_verify_page():
                         st.success("✅ Dokument byl nalezen a ověřen!")
 
                         pdf_bytes = bytes(result['pdf_file'])
-                        b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-
-                        pdf_display = f'<embed src="data:application/pdf;base64,{b64_pdf}" width="100%" height="600px" type="application/pdf">'
-
-                        st.markdown(pdf_display, unsafe_allow_html=True)
+                        show_pdf(pdf_bytes, filename=f"Original_{result['client_name']}.pdf", key=f"dl_pub_{verify_code}")
 
                         with st.expander("Detaily dokumentu"):
                             st.write(f"**Datum vygenerování:** {result['created_at']}")
@@ -533,7 +495,9 @@ if not st.session_state["authenticated"]:
         render_verify_page()
     st.stop()
 
+# =============================================================================
 # Sidebar navigation and layout
+# =============================================================================
 st.markdown("""
     <style>
     [data-testid="stSidebar"] {
@@ -596,10 +560,12 @@ if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_wid
     st.rerun()
 
 st.sidebar.markdown("---")
-
 page = st.session_state.current_page
 
+
+# =============================================================================
 # Main app routing
+# =============================================================================
 
 if page == "Dashboard":
     df_clients = load_clients()
@@ -616,7 +582,7 @@ if page == "Dashboard":
         if "dashboard_selected_client" in st.session_state:
             if st.session_state.dashboard_selected_client in client_options:
                 default_idx = client_options.index(st.session_state.dashboard_selected_client)
-            del st.session_state.dashboard_selected_client
+            st.session_state.pop("dashboard_selected_client", None)
 
         selected_client = st.selectbox("Začněte psát název firmy...", client_options, index=default_idx,
                                        label_visibility="collapsed")
@@ -722,7 +688,6 @@ if page == "Dashboard":
         st.info("Výpočet doporučeného cenového indexu: **XX** (Bude implementováno později)")
         @st.cache_data
         def create_gauge_chart(p_st, p_ret, tgt, min_r, max_r, sel_prod, last_bp):
-            """Vykreslí gauge graf doporučené ceny pro vybraný produkt."""
             g_fig = go.Figure(go.Indicator(
                 mode="gauge+number+delta",
                 value=tgt,
@@ -737,9 +702,9 @@ if page == "Dashboard":
                     'borderwidth': 2,
                     'bordercolor': "gray",
                     'steps': [
-                        {'range': [p_st, min_r], 'color': "rgba(255, 99, 132, 0.4)"},  # Červená zóna - podhodnoceno
-                        {'range': [min_r, max_r], 'color': "rgba(75, 192, 192, 0.5)"},  # Zelená zóna - ideal spot
-                        {'range': [max_r, p_ret], 'color': "rgba(54, 162, 235, 0.4)"}  # Modrá zóna - střelba vysoko
+                        {'range': [p_st, min_r], 'color': "rgba(255, 99, 132, 0.4)"},
+                        {'range': [min_r, max_r], 'color': "rgba(75, 192, 192, 0.5)"},
+                        {'range': [max_r, p_ret], 'color': "rgba(54, 162, 235, 0.4)"}
                     ],
                     'threshold': {
                         'line': {'color': "black", 'width': 5},
@@ -767,7 +732,6 @@ if page == "Dashboard":
         )
 
     st.markdown("---")
-
     st.subheader("Generátor PDF Kalkulace")
 
     with st.expander("Nastavení projektu a dokumentu", expanded=True):
@@ -909,13 +873,13 @@ if page == "Dashboard":
         except Exception as e:
             st.warning(f"Kalkulace vygenerována, ale nepodařilo se ji uložit do archivu: {e}")
 
-        file_prefix = selected_client if selected_client else "Kalkulace"
         st.download_button(
             label="Stáhnout PDF Kalkulaci",
             data=pdf_bytes,
-            file_name=f"{file_prefix}.pdf",
+            file_name=f"Kalkulace_{selected_client if selected_client else 'Neznamy'}.pdf",
             mime="application/pdf",
-            icon=":material/download:"
+            icon=":material/download:",
+            key=f"dl_new_{doc_signature}"
         )
 
 
@@ -948,7 +912,6 @@ elif page == "Odběratelé":
 
     @st.dialog("Detail odběratele", width="large")
     def show_company_dialog(client_name, months, trend_values):
-        """Zobrazí detail odběratele a jeho trend obratu."""
         st.write(f"## {client_name}")
 
         if st.button(
@@ -965,317 +928,100 @@ elif page == "Odběratelé":
         st.markdown("##### Zvětšený graf vývoje obratu")
 
         fig = go.Figure()
-
-        fig.add_trace(
-            go.Scatter(
-                x=months,
-                y=trend_values,
-                mode="lines+markers",
-                line=dict(
-                    width=3,
-                    color="#1f77b4"
-                )
-            )
-        )
-
-        fig.update_layout(
-            height=350,
-            margin=dict(
-                l=20,
-                r=20,
-                t=30,
-                b=20
-            ),
-            xaxis_title="",
-            yaxis_title="Obrat (Kč)"
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+        fig.add_trace(go.Scatter(x=months, y=trend_values, mode="lines+markers", line=dict(width=3, color="#1f77b4")))
+        fig.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20), xaxis_title="", yaxis_title="Obrat (Kč)")
+        st.plotly_chart(fig, use_container_width=True)
 
     df_monthly = load_monthly_sales()
 
     if df_monthly.empty:
         st.info("Zatím žádná data o prodejích.")
-
     else:
-        df_monthly["dealer"] = (
-            df_monthly["dealer"]
-            .fillna("")
-            .astype(str)
-        )
-
-        all_months = sorted(
-            df_monthly["month"].unique().tolist(),
-            reverse=True
-        )
-
-        all_dealers = sorted(
-            [
-                d
-                for d in df_monthly["dealer"].unique()
-                if d.strip() != ""
-            ]
-        )
-
-        all_clients = sorted(
-            df_monthly["client_name"].unique().tolist()
-        )
-
-        default_months = (
-            all_months[:12]
-            if len(all_months) >= 12
-            else all_months
-        )
+        df_monthly["dealer"] = df_monthly["dealer"].fillna("").astype(str)
+        all_months = sorted(df_monthly["month"].unique().tolist(), reverse=True)
+        all_dealers = sorted([d for d in df_monthly["dealer"].unique() if d.strip() != ""])
+        all_clients = sorted(df_monthly["client_name"].unique().tolist())
+        default_months = all_months[:12] if len(all_months) >= 12 else all_months
 
         st.markdown("### Filtrace dat")
-
-        f_col1, f_col2, f_col3, f_col4 = st.columns(
-            [2, 2, 2, 1]
-        )
+        f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 1])
 
         with f_col1:
-            sel_months = st.multiselect(
-                "Měsíce",
-                all_months,
-                default=default_months
-            )
-
+            sel_months = st.multiselect("Měsíce", all_months, default=default_months)
         with f_col2:
-            sel_dealers = st.multiselect(
-                "Dealeři",
-                all_dealers,
-                default=[]
-            )
-
+            sel_dealers = st.multiselect("Dealeři", all_dealers, default=[])
         with f_col3:
-            sel_clients = st.multiselect(
-                "Firmy (konkrétní výběr)",
-                all_clients,
-                default=[]
-            )
-
+            sel_clients = st.multiselect("Firmy (konkrétní výběr)", all_clients, default=[])
         with f_col4:
-            top_n = st.number_input(
-                "Limit top firem",
-                min_value=1,
-                value=20,
-                step=10
-            )
+            top_n = st.number_input("Limit top firem", min_value=1, value=20, step=10)
 
         filtered_df = df_monthly.copy()
-
         if sel_months:
-            filtered_df = filtered_df[
-                filtered_df["month"].isin(sel_months)
-            ]
+            filtered_df = filtered_df[filtered_df["month"].isin(sel_months)]
         else:
             filtered_df = filtered_df.iloc[0:0]
 
         if sel_dealers:
-            filtered_df = filtered_df[
-                filtered_df["dealer"].isin(sel_dealers)
-            ]
-
+            filtered_df = filtered_df[filtered_df["dealer"].isin(sel_dealers)]
         if sel_clients:
-            filtered_df = filtered_df[
-                filtered_df["client_name"].isin(sel_clients)
-            ]
+            filtered_df = filtered_df[filtered_df["client_name"].isin(sel_clients)]
 
         if filtered_df.empty:
-
-            st.warning(
-                "Zadaným filtrům neodpovídají žádná data "
-                "(nebo nejsou vybrány měsíce)."
-            )
-
+            st.warning("Zadaným filtrům neodpovídají žádná data (nebo nejsou vybrány měsíce).")
         else:
-
-            pivot_df = filtered_df.pivot_table(
-                index=[
-                    "client_name",
-                    "ic",
-                    "dealer"
-                ],
-                columns="month",
-                values="monthly_turnover",
-                aggfunc="sum",
-                fill_value=0
-            )
-
-            pivot_df["Celkem (vybrané období)"] = (
-                pivot_df.sum(axis=1)
-            )
-
-            pivot_df = (
-                pivot_df
-                .sort_values(
-                    by="Celkem (vybrané období)",
-                    ascending=False
-                )
-                .reset_index()
-            )
+            pivot_df = filtered_df.pivot_table(index=["client_name", "ic", "dealer"], columns="month", values="monthly_turnover", aggfunc="sum", fill_value=0)
+            pivot_df["Celkem (vybrané období)"] = pivot_df.sum(axis=1)
+            pivot_df = pivot_df.sort_values(by="Celkem (vybrané období)", ascending=False).reset_index()
 
             if not sel_clients:
                 pivot_df = pivot_df.head(top_n)
 
-            st.markdown(
-                f"*Zobrazuji záznamy pro {len(pivot_df)} firem. "
-                f"**Kliknutím na řádek zobrazíš detaily.***"
-            )
+            st.markdown(f"*Zobrazuji záznamy pro {len(pivot_df)} firem. **Kliknutím na řádek zobrazíš detaily.***")
 
-            formatted_pivot = (
-                pivot_df
-                .drop(columns=["ic"])
-                .rename(
-                    columns={
-                        "client_name": "Firma",
-                        "dealer": "Dealer"
-                    }
-                )
-            )
-
-            month_cols = sorted(
-                [
-                    c
-                    for c in formatted_pivot.columns
-                    if c not in [
-                        "Firma",
-                        "Dealer",
-                        "Celkem (vybrané období)"
-                    ]
-                ]
-            )
-
-            formatted_pivot["Trend"] = (
-                formatted_pivot[month_cols]
-                .values
-                .tolist()
-            )
+            formatted_pivot = pivot_df.drop(columns=["ic"]).rename(columns={"client_name": "Firma", "dealer": "Dealer"})
+            month_cols = sorted([c for c in formatted_pivot.columns if c not in ["Firma", "Dealer", "Celkem (vybrané období)"]])
+            formatted_pivot["Trend"] = formatted_pivot[month_cols].values.tolist()
 
             for col in month_cols:
-                formatted_pivot[col] = (
-                    formatted_pivot[col]
-                    .map(
-                        lambda x:
-                            f"{x:,.0f} Kč".replace(",", " ")
-                            if x > 0
-                            else "-"
-                    )
-                )
+                formatted_pivot[col] = formatted_pivot[col].map(lambda x: f"{x:,.0f} Kč".replace(",", " ") if x > 0 else "-")
 
-            max_sales = (
-                float(
-                    formatted_pivot[
-                        "Celkem (vybrané období)"
-                    ].max()
-                )
-                if not formatted_pivot.empty
-                else 1000000
-            )
-
-            cols_order = (
-                [
-                    "Firma",
-                    "Dealer",
-                    "Celkem (vybrané období)"
-                ]
-                + month_cols
-                + ["Trend"]
-            )
-
-            formatted_pivot = formatted_pivot[
-                cols_order
-            ]
+            max_sales = float(formatted_pivot["Celkem (vybrané období)"].max()) if not formatted_pivot.empty else 1000000
+            cols_order = ["Firma", "Dealer", "Celkem (vybrané období)"] + month_cols + ["Trend"]
+            formatted_pivot = formatted_pivot[cols_order]
 
             event = st.dataframe(
                 formatted_pivot,
-
                 hide_index=True,
-
                 use_container_width=True,
-
                 height=700,
-
                 row_height=40,
-
                 selection_mode="single-row",
-
                 on_select="rerun",
-
                 column_config={
-
-                    "Firma": st.column_config.TextColumn(
-                        "Firma",
-                        width="large"
-                    ),
-
-                    "Dealer": st.column_config.TextColumn(
-                        "Dealer",
-                        width="medium"
-                    ),
-
-                    "Celkem (vybrané období)": (
-                        st.column_config.ProgressColumn(
-                            "Celkem",
-                            format="%d Kč",
-                            min_value=0,
-                            max_value=max_sales,
-                            width="medium"
-                        )
-                    ),
-
-                    "Trend": st.column_config.LineChartColumn(
-                        "Trend",
-                        y_min=0,
-                        width="medium"
-                    )
+                    "Firma": st.column_config.TextColumn("Firma", width="large"),
+                    "Dealer": st.column_config.TextColumn("Dealer", width="medium"),
+                    "Celkem (vybrané období)": st.column_config.ProgressColumn("Celkem", format="%d Kč", min_value=0, max_value=max_sales, width="medium"),
+                    "Trend": st.column_config.LineChartColumn("Trend", y_min=0, width="medium")
                 }
             )
 
-            # ======================================================
-            # REAKCE NA KLIKNUTÍ NA ŘÁDEK
-            # ======================================================
-
             if len(event.selection.rows) > 0:
-
-                selected_index = (
-                    event.selection.rows[0]
-                )
-
-                selected_row = (
-                    formatted_pivot.iloc[selected_index]
-                )
-
-                # Data pro graf
+                selected_index = event.selection.rows[0]
+                selected_row = formatted_pivot.iloc[selected_index]
                 trend_data = selected_row["Trend"]
+                show_company_dialog(selected_row["Firma"], month_cols, trend_data)
 
-                # Otevření detailního dialogu
-                show_company_dialog(
-                    selected_row["Firma"],
-                    month_cols,
-                    trend_data
-                )
-
-elif page == "Ověření PDF":
-    render_verify_page()
 
 elif page == "Porovnání dealerů":
     st.title("Porovnání výkonnosti dealerů")
-
     df_dealers = load_dealers_comparison()
 
     if df_dealers.empty:
         st.info("Zatím nejsou k dispozici žádná data z prodejů.")
     else:
         all_dealers = sorted(df_dealers['dealer'].unique().tolist())
-
-        # Filters
         f_col1, f_col2 = st.columns([3, 1])
         with f_col1:
-            # Preselect the top 3 dealers by historical turnover.
             top_3 = df_dealers.groupby('dealer')['turnover'].sum().sort_values(ascending=False).head(3).index.tolist()
             selected_dealers = st.multiselect("Vyber dealery k porovnání:", all_dealers, default=top_3)
         with f_col2:
@@ -1284,29 +1030,19 @@ elif page == "Porovnání dealerů":
         if not selected_dealers:
             st.warning("Vyber alespoň jednoho dealera.")
         else:
-            # Choose the column used for comparison.
             val_col = 'turnover' if metric_to_show == "Obrat" else 'profit'
-
-            # Filter the dataset to the selected dealers.
             df_plot = df_dealers[df_dealers['dealer'].isin(selected_dealers)].copy()
-
             st.markdown("### Meziroční porovnání (Aktuální měsíc vs. Loni)")
-
-            # Determine the most recent month in the dataset.
             max_month = df_plot['month'].max()
 
             try:
-                # Compute the same month in the previous year.
                 yr, mo = max_month.split('-')
                 last_year_month = f"{int(yr) - 1}-{mo}"
-
                 kpi_cols = st.columns(len(selected_dealers))
                 for idx, dealer in enumerate(selected_dealers):
                     dealer_data = df_plot[df_plot['dealer'] == dealer]
-
                     val_now = dealer_data[dealer_data['month'] == max_month][val_col].sum()
                     val_last_year = dealer_data[dealer_data['month'] == last_year_month][val_col].sum()
-
                     delta = val_now - val_last_year
                     delta_pct = (delta / val_last_year * 100) if val_last_year > 0 else 0.0
 
@@ -1314,61 +1050,47 @@ elif page == "Porovnání dealerů":
                         st.metric(
                             label=f"{dealer} ({mo}/{yr})",
                             value=f"{val_now:,.0f} Kč".replace(",", " "),
-                            delta=f"{delta:,.0f} Kč ({delta_pct:+.1f} %)".replace(",",
-                                                                                  " ") if val_last_year > 0 else "Žádná data z loňska",
+                            delta=f"{delta:,.0f} Kč ({delta_pct:+.1f} %)".replace(",", " ") if val_last_year > 0 else "Žádná data z loňska",
                             delta_color="normal"
                         )
             except Exception:
                 st.info("Nemám dostatek dat pro meziroční srovnání (YoY).")
 
             st.markdown("---")
-
             st.subheader(f"Měsíční vývoj ({metric_to_show})")
-
-            # Plotly pivot: months on X, dealers as lines.
             pivot_time = df_plot.pivot(index='month', columns='dealer', values=val_col).fillna(0)
 
             fig_time = go.Figure()
             for col in pivot_time.columns:
-                fig_time.add_trace(go.Scatter(x=pivot_time.index, y=pivot_time[col], mode='lines+markers', name=col,
-                                              line=dict(width=3)))
+                fig_time.add_trace(go.Scatter(x=pivot_time.index, y=pivot_time[col], mode='lines+markers', name=col, line=dict(width=3)))
 
-            fig_time.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Měsíc",
-                                   yaxis_title=f"{metric_to_show} (Kč)", hovermode="x unified")
+            fig_time.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Měsíc", yaxis_title=f"{metric_to_show} (Kč)", hovermode="x unified")
             st.plotly_chart(fig_time, use_container_width=True)
 
             st.subheader(f"Kumulativní růst v aktuálním roce ({metric_to_show})")
-
-            # Keep only the current year from the latest month.
             current_year = max_month.split('-')[0]
             df_ytd = df_plot[df_plot['month'].str.startswith(current_year)].copy()
 
             if not df_ytd.empty:
-                # Sort and calculate cumulative totals per dealer.
                 df_ytd = df_ytd.sort_values(by=['dealer', 'month'])
                 df_ytd['cumulative'] = df_ytd.groupby('dealer')[val_col].cumsum()
-
                 pivot_ytd = df_ytd.pivot(index='month', columns='dealer', values='cumulative').ffill().fillna(0)
 
                 fig_ytd = go.Figure()
                 for col in pivot_ytd.columns:
-                    fig_ytd.add_trace(
-                        go.Scatter(x=pivot_ytd.index, y=pivot_ytd[col], mode='lines', name=col, fill='tozeroy',
-                                   line=dict(width=2)))
+                    fig_ytd.add_trace(go.Scatter(x=pivot_ytd.index, y=pivot_ytd[col], mode='lines', name=col, fill='tozeroy', line=dict(width=2)))
 
-                fig_ytd.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Měsíc",
-                                      yaxis_title=f"Kumulativní {metric_to_show} (Kč)", hovermode="x unified")
+                fig_ytd.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Měsíc", yaxis_title=f"Kumulativní {metric_to_show} (Kč)", hovermode="x unified")
                 st.plotly_chart(fig_ytd, use_container_width=True)
             else:
                 st.info(f"Pro rok {current_year} nejsou zatím žádná data k zobrazení.")
 
+
 elif page == "Archiv nabídek":
     st.title("Archiv cenových nabídek")
 
-
     @st.dialog("Potvrzení smazání")
     def confirm_delete_dialog(sig_id):
-        """Potvrdí a provede smazání archivované kalkulace."""
         st.warning("Opravdu chceš nenávratně smazat tuto kalkulaci z archivu? Tuto akci nelze vzít zpět.")
         dc1, dc2 = st.columns(2)
         with dc1:
@@ -1386,25 +1108,7 @@ elif page == "Archiv nabídek":
             if st.button("Zrušit", use_container_width=True):
                 st.rerun()
 
-
-    def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-        """Zobrazí PDF dokument přímo v prohlížeči a přidá možnost stažení."""
-        b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-
-        pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
-
-        st.download_button(
-            label="Stáhnout PDF do zařízení",
-            data=pdf_binary,
-            file_name=filename,
-            mime="application/pdf",
-            icon=":material/download:",
-            key=key
-        )
-
     tab1, tab2, tab3 = st.tabs(["Moje nabídky", "Sdílené (Finální)", "Vyhledat podle kódu (Ověření)"])
-
     db_conn = get_db_connection()
 
     with tab1:
@@ -1416,36 +1120,28 @@ elif page == "Archiv nabídek":
             my_docs = v_cursor.fetchall()
 
         if my_docs:
-            options = {doc[
-                           'signature_id']: f"{'✅ FINÁLNÍ' if doc['is_final'] else '🔒 SOUKROMÉ'} | {doc['created_at'].strftime('%d.%m.%Y %H:%M')} | {doc['client_name']}"
-                       for doc in my_docs}
-
-            selected_my_id = st.selectbox("Vyber nabídku k zobrazení / úpravě:", options=list(options.keys()),
-                                          format_func=lambda x: options[x], key="my_docs_sel")
+            options = {doc['signature_id']: f"{'✅ FINÁLNÍ' if doc['is_final'] else '🔒 SOUKROMÉ'} | {doc['created_at'].strftime('%d.%m.%Y %H:%M')} | {doc['client_name']}" for doc in my_docs}
+            selected_my_id = st.selectbox("Vyber nabídku k zobrazení / úpravě:", options=list(options.keys()), format_func=lambda x: options[x], key="my_docs_sel")
 
             if selected_my_id:
                 with db_conn.cursor(cursor_factory=RealDictCursor) as v_cursor:
-                    v_cursor.execute("SELECT is_final, pdf_file FROM pdf_archive WHERE signature_id = %s",
-                                     (selected_my_id,))
+                    # Zde jsem doplnil do dotazu i vytažení jména klienta
+                    v_cursor.execute("SELECT is_final, pdf_file, client_name FROM pdf_archive WHERE signature_id = %s", (selected_my_id,))
                     doc_detail = v_cursor.fetchone()
 
                 current_status = doc_detail['is_final']
-
                 col_btn1, col_btn2, col_spacer = st.columns([2, 1, 1])
 
                 with col_btn1:
                     if not current_status:
-                        if st.button("Odemknout pro ostatní (Označit jako Finální)", type="primary",
-                                     use_container_width=True):
+                        if st.button("Odemknout pro ostatní (Označit jako Finální)", type="primary", use_container_width=True):
                             with db_conn.cursor() as c:
-                                c.execute("UPDATE pdf_archive SET is_final = TRUE WHERE signature_id = %s",
-                                          (selected_my_id,))
+                                c.execute("UPDATE pdf_archive SET is_final = TRUE WHERE signature_id = %s", (selected_my_id,))
                             st.rerun()
                     else:
                         if st.button("Zamknout (Zrušit finální status)", use_container_width=True):
                             with db_conn.cursor() as c:
-                                c.execute("UPDATE pdf_archive SET is_final = FALSE WHERE signature_id = %s",
-                                          (selected_my_id,))
+                                c.execute("UPDATE pdf_archive SET is_final = FALSE WHERE signature_id = %s", (selected_my_id,))
                             st.rerun()
 
                 with col_btn2:
@@ -1453,9 +1149,8 @@ elif page == "Archiv nabídek":
                         confirm_delete_dialog(selected_my_id)
 
                 st.markdown("---")
-                # Místo původního volání dej toto:
-                show_pdf(bytes(doc_detail['pdf_file']), filename=f"Kalkulace_{doc['client_name']}.pdf",
-                         key=f"dl_my_{selected_my_id}")
+                # Voláme s upraveným klíčem a vytahujeme client_name korektně z db dotazu.
+                show_pdf(bytes(doc_detail['pdf_file']), filename=f"Kalkulace_{doc_detail['client_name']}.pdf", key=f"dl_my_{selected_my_id}")
         else:
             st.info("Zatím jsi nevygeneroval/a žádné nabídky.")
 
@@ -1467,47 +1162,38 @@ elif page == "Archiv nabídek":
             shared_docs = v_cursor.fetchall()
 
         if shared_docs:
-            options_shared = {doc[
-                                  'signature_id']: f"{doc['created_at'].strftime('%d.%m.%Y')} | {doc['client_name']} | (Autor: {doc['author_email']})"
-                              for doc in shared_docs}
-
-            selected_shared_id = st.selectbox("Vyber finální nabídku k zobrazení:", options=list(options_shared.keys()),
-                                              format_func=lambda x: options_shared[x], key="shared_docs_sel")
+            options_shared = {doc['signature_id']: f"{doc['created_at'].strftime('%d.%m.%Y')} | {doc['client_name']} | (Autor: {doc['author_email']})" for doc in shared_docs}
+            selected_shared_id = st.selectbox("Vyber finální nabídku k zobrazení:", options=list(options_shared.keys()), format_func=lambda x: options_shared[x], key="shared_docs_sel")
 
             if selected_shared_id:
                 with db_conn.cursor(cursor_factory=RealDictCursor) as v_cursor:
-                    v_cursor.execute("SELECT pdf_file FROM pdf_archive WHERE signature_id = %s", (selected_shared_id,))
+                    # Doplnění client_name
+                    v_cursor.execute("SELECT pdf_file, client_name FROM pdf_archive WHERE signature_id = %s", (selected_shared_id,))
                     shared_detail = v_cursor.fetchone()
 
                 st.markdown("---")
-                # Místo původního volání dej toto:
-                show_pdf(bytes(shared_detail['pdf_file']), filename=f"Kalkulace_{doc['client_name']}.pdf",
-                         key=f"dl_shared_{selected_shared_id}")
+                show_pdf(bytes(shared_detail['pdf_file']), filename=f"Kalkulace_{shared_detail['client_name']}.pdf", key=f"dl_shared_{selected_shared_id}")
         else:
             st.info("Nikdo zatím nesdílel žádnou finální nabídku.")
 
     with tab3:
-        st.write(
-            "Zadej ID kód dokumentu. Lze tak dohledat i soukromé (nefinální) nabídky kolegů, pokud ti k nim dají klíč.")
+        st.write("Zadej ID kód dokumentu. Lze tak dohledat i soukromé (nefinální) nabídky kolegů, pokud ti k nim dají klíč.")
         verify_code = st.text_input("Kód dokumentu (ID):", placeholder="např. 4F8A3B2E-...")
 
         if st.button("Vyhledat a zobrazit", type="primary", icon=":material/search:"):
             if verify_code.strip():
                 with db_conn.cursor(cursor_factory=RealDictCursor) as v_cursor:
-                    v_cursor.execute(
-                        "SELECT pdf_file, client_name, author_email FROM pdf_archive WHERE signature_id = %s",
-                        (verify_code.strip(),))
+                    v_cursor.execute("SELECT pdf_file, client_name, author_email FROM pdf_archive WHERE signature_id = %s", (verify_code.strip(),))
                     result = v_cursor.fetchone()
 
                 if result:
                     st.success(f"✅ Dokument nalezen (Klient: {result['client_name']}, Autor: {result['author_email']})")
-                    # Místo původního volání dej toto:
-                    show_pdf(bytes(result['pdf_file']), filename=f"Original_{result['client_name']}.pdf",
-                             key=f"dl_verify_{verify_code}")
+                    show_pdf(bytes(result['pdf_file']), filename=f"Original_{result['client_name']}.pdf", key=f"dl_verify_{verify_code}")
                 else:
                     st.error("❌ Dokument s tímto kódem neexistuje.")
             else:
                 st.warning("Musíš zadat kód.")
+
 
 elif page == "Správa systému (Admin)":
     st.title("Správa systému")
@@ -1516,7 +1202,7 @@ elif page == "Správa systému (Admin)":
     df_clients = load_clients()
     df_products = load_products()
 
-    main_tabs = st.tabs(["Uživatelé", "Firmy", "Produkty", "Prodeje", "Ověření PDF"])
+    main_tabs = st.tabs(["Uživatelé", "Firmy", "Produkty", "Prodeje"])
 
     with main_tabs[0]:
         st.dataframe(df_users, use_container_width=True, hide_index=True)
@@ -1578,9 +1264,6 @@ elif page == "Správa systému (Admin)":
                     st.success("Smazáno.")
                     st.rerun()
 
-    # -------------------------------------------------------------------------
-    # Tab 2: Clients
-    # -------------------------------------------------------------------------
     with main_tabs[1]:
         st.dataframe(df_clients, use_container_width=True, hide_index=True)
         st.markdown("---")
@@ -1683,51 +1366,33 @@ elif page == "Správa systému (Admin)":
                             df_import = pd.concat(all_dataframes, ignore_index=True)
                             col_options = df_import.columns.tolist()
 
-                            def_ic = next((c for c in col_options if 'ič' in str(c).lower() or 'ic' in str(c).lower()),
-                                          col_options[0])
-                            def_name = next((c for c in col_options if
-                                             'firma' in str(c).lower() or 'název' in str(
-                                                 c).lower() or 'odběratel' in str(
-                                                 c).lower()), col_options[0])
-                            def_dealer = next(
-                                (c for c in col_options if 'dealer' in str(c).lower() or 'zástupce' in str(c).lower()),
-                                col_options[0])
+                            def_ic = next((c for c in col_options if 'ič' in str(c).lower() or 'ic' in str(c).lower()), col_options[0])
+                            def_name = next((c for c in col_options if 'firma' in str(c).lower() or 'název' in str(c).lower() or 'odběratel' in str(c).lower()), col_options[0])
+                            def_dealer = next((c for c in col_options if 'dealer' in str(c).lower() or 'zástupce' in str(c).lower()), col_options[0])
 
                             st.markdown("### 2. Spárování sloupců z Excelu na Databázi")
-                            map_ic = st.selectbox("Sloupec s IČ (Povinné):", col_options,
-                                                  index=col_options.index(def_ic))
-                            map_name = st.selectbox("Sloupec s Názvem firmy (Povinné):", col_options,
-                                                    index=col_options.index(def_name))
-                            map_dealer = st.selectbox("Sloupec s Dealerem:", col_options,
-                                                      index=col_options.index(def_dealer))
+                            map_ic = st.selectbox("Sloupec s IČ (Povinné):", col_options, index=col_options.index(def_ic))
+                            map_name = st.selectbox("Sloupec s Názvem firmy (Povinné):", col_options, index=col_options.index(def_name))
+                            map_dealer = st.selectbox("Sloupec s Dealerem:", col_options, index=col_options.index(def_dealer))
 
-                            sum_sales_cols = st.multiselect("Sloupce k sečtení do 'Celkového obratu bez DPH':",
-                                                            col_options,
-                                                            default=[c for c in col_options if
-                                                                     'obrat' in str(c).lower() and 'bez dph' in str(
-                                                                         c).lower()])
-                            sum_prof_cols = st.multiselect("Sloupce k sečtení do 'Ziskovosti (hrubý zisk bez DPH)':",
-                                                           col_options,
-                                                           default=[c for c in col_options if
-                                                                    'zisk' in str(c).lower() and 'bez dph' in str(
-                                                                        c).lower()])
+                            sum_sales_cols = st.multiselect("Sloupce k sečtení do 'Celkového obratu bez DPH':", col_options,
+                                                            default=[c for c in col_options if 'obrat' in str(c).lower() and 'bez dph' in str(c).lower()])
+                            sum_prof_cols = st.multiselect("Sloupce k sečtení do 'Ziskovosti (hrubý zisk bez DPH)':", col_options,
+                                                           default=[c for c in col_options if 'zisk' in str(c).lower() and 'bez dph' in str(c).lower()])
 
                             if st.button("Spustit import...", type="primary", icon=":material/rocket_launch:"):
                                 runtime_db_conn = get_db_connection()
                                 clients_dict = {}
 
-                                # Projedeme řádek po řádku celý spojený mega-dataframe.
                                 for index, row in df_import.iterrows():
                                     c_ic = str(row[map_ic]).strip()
                                     c_name = str(row[map_name]).strip()
 
-                                    # Přeskakujeme řádky, co nemají ičo nebo jméno
                                     if not c_ic or c_ic.lower() == 'nan' or not c_name or c_name.lower() == 'nan':
                                         continue
 
                                     c_dealer = str(row[map_dealer]).strip() if pd.notna(row[map_dealer]) else ""
 
-                                    # Sečteme všechno z vybraných sales sloupců u tohoto řádku.
                                     excel_total_sales = 0.0
                                     for sc in sum_sales_cols:
                                         if pd.notna(row[sc]):
@@ -1736,7 +1401,6 @@ elif page == "Správa systému (Admin)":
                                             except ValueError:
                                                 pass
 
-                                    # To samé pro zisk.
                                     excel_total_prof = 0.0
                                     for pc in sum_prof_cols:
                                         if pd.notna(row[pc]):
@@ -1745,8 +1409,6 @@ elif page == "Správa systému (Admin)":
                                             except ValueError:
                                                 pass
 
-                                    # Ukládáme si to do pomocného slovníku. Pokud už jsme to IČO potkali (např. na jiném listu pro jiný rok),
-                                    # jednoduše ty čísla přičteme. Takže to umí aggregovat víc záznamů jednoho klienta.
                                     if c_ic in clients_dict:
                                         clients_dict[c_ic]['sales'] += excel_total_sales
                                         clients_dict[c_ic]['prof'] += excel_total_prof
@@ -1760,8 +1422,6 @@ elif page == "Správa systému (Admin)":
                                             'prof': excel_total_prof
                                         }
 
-                                # Po sumarizaci pustíme UPSERT (Insert On Conflict Do Update)
-                                # – pokud firma neexistuje v databázi, přidáme jí. Pokud ano (dle IČ), updatneme jí obraty.
                                 imported_count = 0
                                 with runtime_db_conn.cursor() as r_cursor:
                                     for ic_key, data in clients_dict.items():
@@ -1774,22 +1434,17 @@ elif page == "Správa systému (Admin)":
                                                              total_profitability = EXCLUDED.total_profitability,
                                                              dealer = EXCLUDED.dealer
                                                          ''',
-                                                         (ic_key, data['name'], data['sales'], data['prof'],
-                                                          data['dealer']))
+                                                         (ic_key, data['name'], data['sales'], data['prof'], data['dealer']))
 
                                         imported_count += 1
 
                                 load_clients.clear()
-                                st.success(
-                                    f"Úspěšně naimportováno / zaktualizováno {imported_count} unikátních firem (sloučeno ze {len(selected_sheets)} listů)!")
+                                st.success(f"Úspěšně naimportováno / zaktualizováno {imported_count} unikátních firem (sloučeno ze {len(selected_sheets)} listů)!")
                                 st.rerun()
 
                 except Exception as ex:
                     st.error(f"Při zpracování Excelu došlo k chybě: {ex}")
 
-    # -------------------------------------------------------------------------
-    # Tab 3: Products
-    # -------------------------------------------------------------------------
     with main_tabs[2]:
         st.dataframe(df_products, use_container_width=True, hide_index=True)
         st.markdown("---")
@@ -1837,27 +1492,20 @@ elif page == "Správa systému (Admin)":
                 st.success("Smazáno.")
                 st.rerun()
 
-        # -------------------------------------------------------------------------
-        # Tab 4: Sales / Invoices
-        # -------------------------------------------------------------------------
         with main_tabs[3]:
             st.subheader("Import prodejů z Excelu")
-            st.info(
-                "Nahraj soubor s prodeji. Systém automaticky založí chybějící produkty a firmy. U stávajících firem tvrdě aktualizuje Kód dealera podle Excelu.")
+            st.info("Nahraj soubor s prodeji. Systém automaticky založí chybějící produkty a firmy. U stávajících firem tvrdě aktualizuje Kód dealera podle Excelu.")
 
             uploaded_sales = st.file_uploader("Nahrát Excel s prodeji", type=["xlsx", "xls"], key="sales_uploader")
 
             if uploaded_sales:
                 try:
                     df_sales = pd.read_excel(uploaded_sales)
-
-                    required_cols = ['Doklad', 'Kód subjektu', 'Jednotková cena', 'Kód zboží', 'Název zboží', 'Datum',
-                                     'Množství']
+                    required_cols = ['Doklad', 'Kód subjektu', 'Jednotková cena', 'Kód zboží', 'Název zboží', 'Datum', 'Množství']
                     missing_cols = [c for c in required_cols if c not in df_sales.columns]
 
                     if missing_cols:
-                        st.error(
-                            f"V Excelu chybí tyto povinné sloupce: {', '.join(missing_cols)}. Zkontroluj hlavičku.")
+                        st.error(f"V Excelu chybí tyto povinné sloupce: {', '.join(missing_cols)}. Zkontroluj hlavičku.")
                     else:
                         if st.button("Spustit import prodejů", type="primary", icon=":material/cloud_upload:"):
                             sales_db_conn = get_db_connection()
@@ -1870,9 +1518,7 @@ elif page == "Správa systému (Admin)":
                             fk_error_count = 0
 
                             with sales_db_conn.cursor() as s_cursor:
-                                # Phase 1: Validate and create missing products.
-                                unique_prods = df_sales[['Kód zboží', 'Název zboží']].drop_duplicates().dropna(
-                                    subset=['Kód zboží'])
+                                unique_prods = df_sales[['Kód zboží', 'Název zboží']].drop_duplicates().dropna(subset=['Kód zboží'])
                                 for _, p_row in unique_prods.iterrows():
                                     p_id = str(p_row['Kód zboží']).strip()
                                     if not p_id or p_id.lower() == 'nan': continue
@@ -1888,21 +1534,17 @@ elif page == "Správa systému (Admin)":
                                             p_name = f"{p_name} ({p_id})"
 
                                         try:
-                                            s_cursor.execute(
-                                                "INSERT INTO products (id, name, storage_price) VALUES (%s, %s, %s)",
-                                                (p_id, p_name, 0.0))
+                                            s_cursor.execute("INSERT INTO products (id, name, storage_price) VALUES (%s, %s, %s)", (p_id, p_name, 0.0))
                                             created_products += 1
                                         except Exception:
                                             pass
 
-                                # Phase 2: Validate clients and sync dealers.
                                 has_dealer_col = 'Kód dealera' in df_sales.columns
                                 cols_to_extract = ['Kód subjektu', 'Název subjektu']
                                 if has_dealer_col:
                                     cols_to_extract.append('Kód dealera')
 
-                                unique_clients = df_sales[cols_to_extract].drop_duplicates().dropna(
-                                    subset=['Kód subjektu'])
+                                unique_clients = df_sales[cols_to_extract].drop_duplicates().dropna(subset=['Kód subjektu'])
 
                                 for _, c_row in unique_clients.iterrows():
                                     c_ic = str(c_row['Kód subjektu']).strip()
@@ -1921,7 +1563,6 @@ elif page == "Správa systému (Admin)":
                                     existing_client = s_cursor.fetchone()
 
                                     if not existing_client:
-                                        # Create a missing client together with its dealer.
                                         try:
                                             s_cursor.execute(
                                                 "INSERT INTO clients (ic, name, total_sales, total_profitability, dealer) VALUES (%s, %s, %s, %s, %s)",
@@ -1931,17 +1572,14 @@ elif page == "Správa systému (Admin)":
                                         except Exception:
                                             pass
                                     else:
-                                        # Update the dealer if the Excel value differs.
                                         db_dealer = existing_client[1]
                                         if c_dealer and str(db_dealer).strip() != c_dealer:
                                             try:
-                                                s_cursor.execute("UPDATE clients SET dealer = %s WHERE ic = %s",
-                                                                 (c_dealer, c_ic))
+                                                s_cursor.execute("UPDATE clients SET dealer = %s WHERE ic = %s", (c_dealer, c_ic))
                                                 updated_dealers += 1
                                             except Exception:
                                                 pass
 
-                                # Phase 3: Import sales rows.
                                 for index, row in df_sales.iterrows():
                                     doklad = str(row['Doklad']).strip()
                                     excel_prod_id = str(row['Kód zboží']).strip()
@@ -1951,10 +1589,8 @@ elif page == "Správa systému (Admin)":
                                         continue
 
                                     try:
-                                        price = int(round(float(row['Jednotková cena']))) if pd.notna(
-                                            row['Jednotková cena']) else 0
-                                        quantity = int(round(float(row['Množství']))) if pd.notna(
-                                            row['Množství']) else 0
+                                        price = int(round(float(row['Jednotková cena']))) if pd.notna(row['Jednotková cena']) else 0
+                                        quantity = int(round(float(row['Množství']))) if pd.notna(row['Množství']) else 0
                                     except ValueError:
                                         price, quantity = 0, 0
 
@@ -1969,8 +1605,7 @@ elif page == "Správa systému (Admin)":
                                                          VALUES (%s, %s, %s, %s, %s, %s)
                                                          ON CONFLICT (id, product_id) DO NOTHING
                                                          ''',
-                                                         (doklad, client_ic, price, excel_prod_id, purchase_date,
-                                                          quantity))
+                                                         (doklad, client_ic, price, excel_prod_id, purchase_date, quantity))
 
                                         if s_cursor.rowcount > 0:
                                             imported_count += 1
@@ -1979,21 +1614,17 @@ elif page == "Správa systému (Admin)":
                                     except psycopg2.IntegrityError:
                                         fk_error_count += 1
 
-                            # Refresh caches and notify the user.
                             load_products.clear()
                             load_clients.clear()
                             load_client_invoices.clear()
 
-                            st.success(
-                                f"Hotovo! Naimportováno: {imported_count} nových prodejů. Přeskočeno duplikátů: {skipped_count}.")
+                            st.success(f"Hotovo! Naimportováno: {imported_count} nových prodejů. Přeskočeno duplikátů: {skipped_count}.")
 
                             if created_products > 0 or created_clients > 0 or updated_dealers > 0:
-                                st.info(
-                                    f"✨ Automatické akce na pozadí: založeno **{created_products} nových produktů**, založeno **{created_clients} nových firem** a opraven kód dealera u **{updated_dealers} stávajících firem**.")
+                                st.info(f"✨ Automatické akce na pozadí: založeno **{created_products} nových produktů**, založeno **{created_clients} nových firem** a opraven kód dealera u **{updated_dealers} stávajících firem**.")
 
                             if fk_error_count > 0:
-                                st.warning(
-                                    f"⚠️ Zahozeno {fk_error_count} záznamů kvůli nějaké neočekávané chybě integrity (foreign key constraint).")
+                                st.warning(f"⚠️ Zahozeno {fk_error_count} záznamů kvůli nějaké neočekávané chybě integrity (foreign key constraint).")
 
                 except Exception as e:
                     st.error(f"Během zpracování Excelu došlo k chybě: {e}")
