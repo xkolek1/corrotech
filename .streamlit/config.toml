@@ -3,7 +3,7 @@
 base="dark"
 
 # Primary accent color for interactive elements (buttons, active tabs)
-primaryColor="#f39c12" # E.g., Corrotech orange/yellow
+primaryColor="#f39c12"
 
 # Main background color of the app
 backgroundColor="#121212"
@@ -14,5 +14,5 @@ secondaryBackgroundColor="#1e1e1e"
 # Main text color
 textColor="#ffffff"
 
-# Font family ("sans serif", "serif", or "monospace")
+# Font family
 font="sans serif"
