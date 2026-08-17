@@ -1,0 +1,8 @@
+streamlit
+extra-streamlit-components
+psycopg2-binary
+bcrypt
+pandas
+plotly
+fpdf
+openpyxl
