@@ -7,6 +7,7 @@ import datetime
 import tempfile
 import streamlit as st
 import extra_streamlit_components as stx
+import streamlit.components.v1 as components
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import bcrypt
@@ -396,20 +397,45 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Zobrazí PDF dokument přímo v prohlížeči přes object a přidá možnost bezpečného stažení."""
+    """Zobrazí PDF přes bezpečný Blob URL, aby to prošlo přes agresivní prohlížeče."""
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-    # Použití tagu object místo iframe s vlastní chybovou hláškou při zablokování
-    pdf_display = f'''
-    <object data="data:application/pdf;base64,{b64_pdf}" type="application/pdf" width="100%" height="800px">
-        <div style="padding: 20px; background-color: #f8d7da; color: #721c24; border-radius: 5px; border: 1px solid #f5c6cb;">
-            <strong>Prohlížeč zablokoval přímé zobrazení PDF z bezpečnostních důvodů.</strong><br>
-            (Pokud používáš Brave, vypni si pro tuto stránku štíty – ikonka lva vpravo nahoře).<br><br>
-            Soubor je ale v pořádku, použij tlačítko pro stažení níže.
-        </div>
-    </object>
-    '''
-    st.markdown(pdf_display, unsafe_allow_html=True)
+    # JavaScript, který převede Base64 na virtuální soubor (Blob) v paměti prohlížeče.
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ margin: 0; padding: 0; overflow: hidden; }}
+            iframe {{ width: 100vw; height: 100vh; border: none; }}
+        </style>
+    </head>
+    <body>
+        <script>
+            // Dekódování Base64 dat do binárního pole
+            const b64Data = '{b64_pdf}';
+            const byteCharacters = atob(b64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            const byteArray = new Uint8Array(byteNumbers);
+
+            // Vytvoření virtuálního souboru a URL
+            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+            const blobUrl = URL.createObjectURL(blob);
+
+            // Vytvoření iframu a předání Blob URL (prohlížeč toto neblokuje)
+            const iframe = document.createElement('iframe');
+            iframe.src = blobUrl;
+            document.body.appendChild(iframe);
+        </script>
+    </body>
+    </html>
+    """
+
+    # Vykreslení přes dedikovanou komponentu Streamlitu
+    components.html(html_code, height=800)
 
     st.download_button(
         label="Stáhnout PDF do zařízení",
