@@ -21,8 +21,8 @@ class KalkulacePDF(FPDF):
 
         font_regular = "fonts/arial.ttf"
         font_bold = "fonts/arialbd.ttf"
-        self.add_font("Arial", "", font_regular)
-        self.add_font("Arial", "B", font_bold)
+        self.add_font("Arial", "", font_regular, uni=True)
+        self.add_font("Arial", "B", font_bold, uni=True)
 
         self.sum_teor_cena_m2 = 0.0
         self.sum_teor_cena = 0.0
