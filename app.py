@@ -397,38 +397,34 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Cross-browser PDF display with robust fallbacks for Streamlit Cloud."""
+    """Reliable PDF display for Streamlit Cloud across browsers."""
     st.subheader("Náhled PDF")
 
-    # 1) Preferred native Streamlit renderer (newer Streamlit versions)
-    rendered = False
+    shown = False
+
+    # Native Streamlit PDF renderer (works best when available)
     try:
         if hasattr(st, "pdf"):
-            st.pdf(pdf_binary)  # type: ignore[attr-defined]
-            rendered = True
+            st.pdf(pdf_binary)  # Streamlit >= version with st.pdf
+            shown = True
     except Exception:
-        rendered = False
+        shown = False
 
-    # 2) Fallback renderer for browsers where embedded PDF is blocked
-    if not rendered:
-        b64_pdf = base64.b64encode(pdf_binary).decode("utf-8")
-        pdf_data_url = f"data:application/pdf;base64,{b64_pdf}"
-
-        st.info("Vestavěný náhled PDF je v tomto prohlížeči omezen. Použijte otevření v nové kartě nebo stažení.")
-
-        st.markdown(
-            f'<a href="{pdf_data_url}" target="_blank" rel="noopener noreferrer">📄 Otevřít PDF v nové kartě</a>',
-            unsafe_allow_html=True,
+    # If native preview is unavailable/fails, show clear fallback message
+    if not shown:
+        st.warning(
+            "Náhled PDF nelze v tomto prostředí zobrazit. "
+            "Použijte stažení souboru níže."
         )
 
-    # 3) Guaranteed fallback in all cases
+    # Always provide download
     st.download_button(
         label="Stáhnout PDF do zařízení",
         data=pdf_binary,
         file_name=filename,
         mime="application/pdf",
         icon=":material/download:",
-        key=key,
+        key=key
     )
 
 # =============================================================================
