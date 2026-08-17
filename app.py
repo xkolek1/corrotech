@@ -1387,12 +1387,22 @@ elif page == "Archiv nabídek":
                 st.rerun()
 
 
-    def show_pdf(pdf_binary):
-        """Zobrazí PDF dokument přímo v prohlížeči pomocí Base64 embed prvku."""
+    def show_pdf(pdf_binary, filename="Kalkulace.pdf"):
+        """Zobrazí PDF dokument přímo v prohlížeči a přidá možnost stažení."""
         b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-        pdf_display = f'<embed src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf">'
+
+        # Použití iframe je pro Base64 data v moderních prohlížečích spolehlivější než embed
+        pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
 
+        # Přidání tlačítka pro přímé stažení pod náhled
+        st.download_button(
+            label="Stáhnout PDF do zařízení",
+            data=pdf_binary,
+            file_name=filename,
+            mime="application/pdf",
+            icon=":material/download:"
+        )
 
     tab1, tab2, tab3 = st.tabs(["Moje nabídky", "Sdílené (Finální)", "Vyhledat podle kódu (Ověření)"])
 
