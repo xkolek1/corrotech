@@ -396,9 +396,19 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Zobrazí PDF dokument přímo v prohlížeči přes iframe a přidá možnost bezpečného stažení."""
+    """Zobrazí PDF dokument přímo v prohlížeči přes object a přidá možnost bezpečného stažení."""
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
+
+    # Použití tagu object místo iframe s vlastní chybovou hláškou při zablokování
+    pdf_display = f'''
+    <object data="data:application/pdf;base64,{b64_pdf}" type="application/pdf" width="100%" height="800px">
+        <div style="padding: 20px; background-color: #f8d7da; color: #721c24; border-radius: 5px; border: 1px solid #f5c6cb;">
+            <strong>Prohlížeč zablokoval přímé zobrazení PDF z bezpečnostních důvodů.</strong><br>
+            (Pokud používáš Brave, vypni si pro tuto stránku štíty – ikonka lva vpravo nahoře).<br><br>
+            Soubor je ale v pořádku, použij tlačítko pro stažení níže.
+        </div>
+    </object>
+    '''
     st.markdown(pdf_display, unsafe_allow_html=True)
 
     st.download_button(
