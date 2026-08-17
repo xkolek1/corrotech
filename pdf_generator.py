@@ -19,8 +19,8 @@ class KalkulacePDF(FPDF):
         self.validity_date = validity_date
         self.signature_id = signature_id
 
-        font_regular = r"C:\Windows\Fonts\arial.ttf"
-        font_bold = r"C:\Windows\Fonts\arialbd.ttf"
+        font_regular = "fonts/arial.ttf"
+        font_bold = "fonts/arialbd.ttf"
         self.add_font("Arial", "", font_regular)
         self.add_font("Arial", "B", font_bold)
 
