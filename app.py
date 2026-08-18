@@ -687,7 +687,7 @@ if page == "Dashboard":
             if pd.isna(profit) or profit == 0:
                 st.metric("Celková ziskovost bez DPH", "Nezadáno / 0")
             else:
-                st.metric("Celková ziskovost bez DPH", f"{profit:,.0f} Kč".replace(",", " "))
+                st.metric("Celková ziskovost bez DPH", f"{profit:,.0f} Kč - není pravda zatím :)".replace(",", " "))
 
         raw_dealer = client_row['dealer']
         dealer_str = str(raw_dealer).strip() if pd.notna(raw_dealer) else ""
