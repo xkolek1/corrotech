@@ -398,16 +398,14 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Bezpečná tlačítka pro otevření/stažení PDF s děděním barev z config.toml. Bez náhledu."""
+    """Zobrazení PDF pomocí viditelnějších minimalistických SVG ikon."""
 
     try:
-        primary_color = st.get_option("theme.primaryColor") or "#f39c12"
-        text_color = st.get_option("theme.textColor") or "#ffffff"
         bg_color = st.get_option("theme.backgroundColor") or "#121212"
+        primary_color = st.get_option("theme.primaryColor") or "#f39c12"
     except Exception:
-        primary_color = "#f39c12"
-        text_color = "#ffffff"
         bg_color = "#121212"
+        primary_color = "#f39c12"
 
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
@@ -419,55 +417,51 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
             body {{
                 margin: 0;
                 padding: 0;
-                font-family: "Source Sans Pro", sans-serif;
                 background-color: {bg_color};
-            }}
-            .container {{
                 display: flex;
-                gap: 15px;
-                padding: 10px 0;
+                justify-content: flex-start; /* Návrat doleva, ať to lidi nehledají na druhém konci monitoru */
+                align-items: center;
+                height: 100vh;
+                overflow: hidden;
             }}
-            .btn {{
-                flex: 1;
-                padding: 0.6rem 1rem;
-                text-align: center;
-                text-decoration: none;
-                border-radius: 0.5rem;
-                font-weight: normal; /* Zrušena tučnost */
+            .icon-btn {{
                 cursor: pointer;
-                border: none;
-                font-size: 16px;
-                transition: filter 0.2s, border-color 0.2s, color 0.2s;
+                text-decoration: none;
+                color: #ffffff; /* Čistě bílá pro maximální kontrast */
+                margin-right: 15px; /* Mezera mezi ikonami */
+                transition: all 0.2s ease-in-out;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 10px; /* Zvětšený hitbox pro kliknutí */
+                background-color: rgba(255, 255, 255, 0.08); /* Jemné čtvercové pozadí */
+                border-radius: 8px; /* Zaoblené rohy */
+                border: 1px solid rgba(255, 255, 255, 0.15); /* Jemná ohraničující linka */
             }}
-            /* Hlavní tlačítko */
-            .btn-open {{
-                background-color: {primary_color};
-                color: #ffffff; /* Natvrdo bílý text */
+            .icon-btn svg {{
+                width: 28px; /* Zvětšené ikony */
+                height: 28px;
+                stroke: currentColor;
+                stroke-width: 2.5; /* Tučnější tahy */
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                fill: none;
             }}
-            .btn-open:hover {{
-                filter: brightness(0.85);
-            }}
-            /* Vedlejší tlačítko */
-            .btn-down {{
-                background-color: transparent;
-                color: {text_color};
-                border: 1px solid {text_color}40;
-            }}
-            .btn-down:hover {{
-                border-color: {primary_color};
+            .icon-btn:hover {{
                 color: {primary_color};
+                background-color: rgba(255, 255, 255, 0.15);
+                border-color: {primary_color};
+                transform: translateY(-2px); /* Mírné povyskočení při najetí myší */
             }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <button class="btn btn-open" onclick="openPdf()">
-               ↗️ Otevřít PDF v nové kartě
-            </button>
-            <a class="btn btn-down" href="data:application/pdf;base64,{b64_pdf}" download="{filename}">
-               ⬇️ Uložit do zařízení
-            </a>
-        </div>
+        <button class="icon-btn" onclick="openPdf()" title="Otevřít PDF v nové kartě">
+            <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </button>
+        <a class="icon-btn" href="data:application/pdf;base64,{b64_pdf}" download="{filename}" title="Uložit do zařízení">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </a>
 
         <script>
         function openPdf() {{
@@ -488,7 +482,7 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
     </html>
     """
 
-    components.html(html_code, height=70)
+    components.html(html_code, height=60)
 
 # =============================================================================
 # Login & Public Pages
@@ -1609,8 +1603,7 @@ elif page == "Archiv nabídek":
                     if st.button("🗑️ Zahodit", use_container_width=True):
                         confirm_delete_dialog(selected_my_id)
 
-                st.markdown("---")
-                # Voláme s upraveným klíčem a vytahujeme client_name korektně z db dotazu.
+
                 show_pdf(bytes(doc_detail['pdf_file']), filename=f"Kalkulace_{doc_detail['client_name']}.pdf", key=f"dl_my_{selected_my_id}")
         else:
             st.info("Zatím jsi nevygeneroval/a žádné nabídky.")
@@ -1632,7 +1625,6 @@ elif page == "Archiv nabídek":
                     v_cursor.execute("SELECT pdf_file, client_name FROM pdf_archive WHERE signature_id = %s", (selected_shared_id,))
                     shared_detail = v_cursor.fetchone()
 
-                st.markdown("---")
                 show_pdf(bytes(shared_detail['pdf_file']), filename=f"Kalkulace_{shared_detail['client_name']}.pdf", key=f"dl_shared_{selected_shared_id}")
         else:
             st.info("Nikdo zatím nesdílel žádnou finální nabídku.")
