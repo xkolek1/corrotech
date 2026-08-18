@@ -818,7 +818,6 @@ if page == "Dashboard":
             'odstin': '', 'dft': 100.0, 'plocha': 100.0, 'c_l': 0.0, 'redeni': 5.0
         })
         st.rerun()
-
     if st.button("Vygenerovat PDF", type="primary", icon=":material/picture_as_pdf:"):
         doc_signature = str(uuid4()).upper()
 
@@ -863,16 +862,8 @@ if page == "Dashboard":
         pdf.draw_table(products_data, main_loss=int(pdf_loss), celkova_plocha=pdf_area, sys_type=pdf_sys_type,
                        pozn=pdf_pozn)
 
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        tmp_name = tmp.name
-        tmp.close()
-
-        pdf.output(tmp_name)
-
-        with open(tmp_name, "rb") as f:
-            pdf_bytes = f.read()
-
-        os.remove(tmp_name)
+        # ČISTÉ ŘEŠENÍ: Vygenerování PDF přímo do bytů bez ukládání na disk
+        pdf_bytes = bytes(pdf.output())
 
         try:
             db_conn = get_db_connection()
@@ -885,15 +876,25 @@ if page == "Dashboard":
         except Exception as e:
             st.warning(f"Kalkulace vygenerována, ale nepodařilo se ji uložit do archivu: {e}")
 
+        # Uložíme hotový soubor do session_state, aby ho smazání tlačítka "Vygenerovat" nezabilo
+        st.session_state["ready_pdf_bytes"] = pdf_bytes
+        st.session_state["ready_pdf_name"] = f"Kalkulace_{selected_client if selected_client else 'Neznamy'}.pdf"
+        st.session_state["ready_pdf_sig"] = doc_signature
+
+        # -----------------------------------------------------------
+        # Tlačítko na stažení je teď MIMO samotné generování.
+        # Jakmile uživatel vygeneruje PDF, tohle tlačítko naskočí.
+        # -----------------------------------------------------------
+    if "ready_pdf_bytes" in st.session_state:
+        st.success("✅ Kalkulace byla úspěšně vygenerována!")
         st.download_button(
             label="Stáhnout PDF Kalkulaci",
-            data=pdf_bytes,
-            file_name=f"Kalkulace_{selected_client if selected_client else 'Neznamy'}.pdf",
+            data=st.session_state["ready_pdf_bytes"],
+            file_name=st.session_state["ready_pdf_name"],
             mime="application/pdf",
             icon=":material/download:",
-            key=f"dl_new_{doc_signature}"
+            key=f"dl_new_{st.session_state['ready_pdf_sig']}"
         )
-
 
 elif page == "Můj profil":
     st.title("Můj profil")
