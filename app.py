@@ -398,7 +398,7 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Bezpečné zobrazení PDF s děděním barev z config.toml."""
+    """Bezpečná tlačítka pro otevření/stažení PDF s děděním barev z config.toml. Bez náhledu."""
 
     try:
         primary_color = st.get_option("theme.primaryColor") or "#f39c12"
@@ -420,13 +420,12 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
                 margin: 0;
                 padding: 0;
                 font-family: "Source Sans Pro", sans-serif;
-                background-color: {bg_color}; /* Zděděno z config.toml */
+                background-color: {bg_color};
             }}
             .container {{
                 display: flex;
                 gap: 15px;
                 padding: 10px 0;
-                margin-bottom: 15px;
             }}
             .btn {{
                 flex: 1;
@@ -434,7 +433,7 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
                 text-align: center;
                 text-decoration: none;
                 border-radius: 0.5rem;
-                font-weight: 600;
+                font-weight: normal; /* Zrušena tučnost */
                 cursor: pointer;
                 border: none;
                 font-size: 16px;
@@ -442,28 +441,21 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
             }}
             /* Hlavní tlačítko */
             .btn-open {{
-                background-color: {primary_color}; /* Zděděno z config.toml */
-                color: {bg_color}; /* Zděděno z config.toml (aby byl text kontrastní) */
+                background-color: {primary_color};
+                color: #ffffff; /* Natvrdo bílý text */
             }}
             .btn-open:hover {{
-                filter: brightness(0.85); /* Univerzální ztmavení nezávisle na barvě */
+                filter: brightness(0.85);
             }}
             /* Vedlejší tlačítko */
             .btn-down {{
                 background-color: transparent;
-                color: {text_color}; /* Zděděno z config.toml */
-                border: 1px solid {text_color}40; /* Barva textu s 25% průhledností (40 v HEX) */
+                color: {text_color};
+                border: 1px solid {text_color}40;
             }}
             .btn-down:hover {{
                 border-color: {primary_color};
                 color: {primary_color};
-            }}
-            /* Náhled PDF */
-            #pdf-preview {{
-                width: 100%;
-                height: 800px;
-                border: 1px solid {text_color}33; /* 20% průhlednost */
-                border-radius: 0.5rem;
             }}
         </style>
     </head>
@@ -477,22 +469,18 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
             </a>
         </div>
 
-        <iframe id="pdf-preview" type="application/pdf"></iframe>
-
         <script>
-        const b64 = "{b64_pdf}";
-        const byteCharacters = atob(b64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {{
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }}
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], {{type: 'application/pdf'}});
-        const blobUrl = URL.createObjectURL(blob);
-
-        document.getElementById('pdf-preview').src = blobUrl;
-
         function openPdf() {{
+            const b64 = "{b64_pdf}";
+            const byteCharacters = atob(b64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+            const blobUrl = URL.createObjectURL(blob);
+
             window.open(blobUrl, '_blank');
         }}
         </script>
@@ -500,7 +488,7 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
     </html>
     """
 
-    components.html(html_code, height=900)
+    components.html(html_code, height=70)
 
 # =============================================================================
 # Login & Public Pages
