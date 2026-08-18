@@ -776,7 +776,7 @@ if page == "Dashboard":
 
         pdf_pozn = st.text_input("Poznámka (1. řádek tabulky)", value="Protipožární ochrana PLATE15*200")
 
-        st.markdown("#### Příprava povrchu (výběr)")
+        st.markdown("#### Příprava povrchu (výběr) - max 3/4 pro 5 nátěrových vrstev")
         prep_a = st.selectbox("A - Základní čištění (vyberte max. 1)", PREP_A)
         prep_b = st.selectbox("B - Abrazivní tryskání plošné (vyberte max. 1)", PREP_B)
         prep_c = st.selectbox("C - Tryskání se specifikací drsnosti (vyberte max. 1)", PREP_C)
