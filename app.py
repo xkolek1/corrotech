@@ -398,52 +398,21 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    import base64
     import uuid
 
+    # Pojistka pro unikátní ID tlačítka, aby se nezasekávala cache Streamlitu
     if key is None:
         key = str(uuid.uuid4())
 
-    b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-
-    st.subheader("Náhled dokumentu")
-
-    st.markdown(
-        f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>',
-        unsafe_allow_html=True
+    st.download_button(
+        label="Stáhnout PDF do zařízení",
+        data=bytes(pdf_binary),
+        file_name=filename,
+        mime="application/pdf",
+        icon=":material/download:",
+        key=f"dl_btn_{key}",
+        use_container_width=True
     )
-
-    st.write("")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.download_button(
-            label="Stáhnout PDF",
-            data=pdf_binary,
-            file_name=filename,
-            mime="application/pdf",
-            icon=":material/download:",
-            key=f"dl_btn_{key}",
-            use_container_width=True
-        )
-
-    with col2:
-        st.markdown(
-            f"""
-            <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
-                display: flex; align-items: center; justify-content: center;
-                background-color: transparent; color: inherit; text-decoration: none;
-                padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(250, 250, 250, 0.2);
-                height: 42px; width: 100%; font-family: inherit; font-size: 16px;
-                box-sizing: border-box; transition: border-color 0.2s;
-            " onmouseover="this.style.borderColor='rgba(250, 250, 250, 0.5)'" onmouseout="this.style.borderColor='rgba(250, 250, 250, 0.2)'">
-                ↗️ Otevřít v nové kartě
-            </a>
-            """,
-            unsafe_allow_html=True
-        )
-
 # =============================================================================
 # Login & Public Pages
 # =============================================================================
@@ -894,20 +863,20 @@ if page == "Dashboard":
         pdf.draw_table(products_data, main_loss=int(pdf_loss), celkova_plocha=pdf_area, sys_type=pdf_sys_type,
                        pozn=pdf_pozn)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            pdf.output(tmp.name)
-            with open(tmp.name, "rb") as f:
-                pdf_bytes = f.read()
-        os.remove(tmp.name)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        tmp_name = tmp.name
+        tmp.close()
+
+        pdf.output(tmp_name)
+
+        with open(tmp_name, "rb") as f:
+            pdf_bytes = f.read()
+
+        os.remove(tmp_name)
 
         try:
             db_conn = get_db_connection()
             with db_conn.cursor() as db_cursor:
-                db_cursor.execute(
-                    "INSERT INTO pdf_archive (signature_id, author_email, client_name, pdf_file) VALUES (%s, %s, %s, %s)",
-                    (doc_signature, st.session_state.get("user_email", "Neznámý"), pdf_client,
-                     psycopg2.Binary(pdf_bytes))
-                )
         except Exception as e:
             st.warning(f"Kalkulace vygenerována, ale nepodařilo se ji uložit do archivu: {e}")
 
