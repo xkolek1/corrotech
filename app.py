@@ -398,32 +398,94 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
+    """Bezpečné zobrazení PDF v nové kartě pomocí JS Blobu (obchází restrikce Chromia)."""
     import base64
+    import streamlit.components.v1 as components
 
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-    # 1. Náhled přímo na stránce
-    st.markdown("### Náhled dokumentu")
-    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                font-family: "Source Sans Pro", sans-serif;
+            }}
+            .container {{
+                display: flex;
+                gap: 15px;
+                padding: 10px 0;
+            }}
+            .btn {{
+                flex: 1;
+                padding: 0.6rem 1rem;
+                text-align: center;
+                text-decoration: none;
+                border-radius: 0.5rem;
+                font-weight: 600;
+                cursor: pointer;
+                border: none;
+                font-size: 16px;
+                transition: 0.2s;
+            }}
+            /* Hlavní tlačítko pro otevření (vypadá jako Streamlit Primary) */
+            .btn-open {{
+                background-color: #FF4B4B;
+                color: white;
+            }}
+            .btn-open:hover {{
+                background-color: #ff3333;
+            }}
+            /* Vedlejší tlačítko pro uložení (vypadá jako Streamlit Secondary) */
+            .btn-down {{
+                background-color: transparent;
+                color: #FAFAFA;
+                border: 1px solid rgba(250, 250, 250, 0.3);
+            }}
+            .btn-down:hover {{
+                border-color: rgba(250, 250, 250, 0.7);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <!-- Tlačítko volající JS funkci -->
+            <button class="btn btn-open" onclick="openPdf()">
+               ↗️ Otevřít PDF v nové kartě
+            </button>
+            <!-- Tlačítko pro klasické přímé stažení -->
+            <a class="btn btn-down" href="data:application/pdf;base64,{b64_pdf}" download="{filename}">
+               ⬇️ Uložit do zařízení
+            </a>
+        </div>
 
-    # 2. Tlačítka pro stažení a otevření v nové kartě
-    html_buttons = f"""
-    <div style="display: flex; gap: 15px; margin-top: 15px; margin-bottom: 20px;">
-        <a href="data:application/pdf;base64,{b64_pdf}" download="{filename}" 
-           style="flex: 1; padding: 0.5rem 1rem; background-color: #f39c12; color: white; 
-                  text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;">
-           ⬇️ Stáhnout PDF
-        </a>
-        <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" 
-           style="flex: 1; padding: 0.5rem 1rem; background-color: transparent; color: inherit; 
-                  text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;
-                  border: 1px solid rgba(250, 250, 250, 0.2); transition: 0.3s;">
-           ↗️ Otevřít na nové kartě
-        </a>
-    </div>
+        <script>
+        function openPdf() {{
+            const b64 = "{b64_pdf}";
+            const byteCharacters = atob(b64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            const byteArray = new Uint8Array(byteNumbers);
+
+            // Tvorba virtuálního souboru v paměti
+            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+            const blobUrl = URL.createObjectURL(blob);
+
+            // Otevření bezpečné URL v nové kartě (Brave i Edge toto povolí)
+            window.open(blobUrl, '_blank');
+        }}
+        </script>
+    </body>
+    </html>
     """
-    st.markdown(html_buttons, unsafe_allow_html=True)
+
+    # Vykreslíme HTML komponentu o výšce pouhých 70px (tak akorát pro ta 2 tlačítka)
+    components.html(html_code, height=70)
 
 # =============================================================================
 # Login & Public Pages
