@@ -398,35 +398,51 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Reliable PDF display for Streamlit Cloud across browsers."""
-    st.subheader("Náhled PDF")
+    import base64
+    import uuid
 
-    shown = False
+    if key is None:
+        key = str(uuid.uuid4())
 
-    # Native Streamlit PDF renderer (works best when available)
-    try:
-        if hasattr(st, "pdf"):
-            st.pdf(pdf_binary)  # Streamlit >= version with st.pdf
-            shown = True
-    except Exception:
-        shown = False
+    b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-    # If native preview is unavailable/fails, show clear fallback message
-    if not shown:
-        st.warning(
-            "Náhled PDF nelze v tomto prostředí zobrazit. "
-            "Použijte stažení souboru níže."
+    st.subheader("Náhled dokumentu")
+
+    st.markdown(
+        f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>',
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.download_button(
+            label="Stáhnout PDF",
+            data=pdf_binary,
+            file_name=filename,
+            mime="application/pdf",
+            icon=":material/download:",
+            key=f"dl_btn_{key}",
+            use_container_width=True
         )
 
-    # Always provide download
-    st.download_button(
-        label="Stáhnout PDF do zařízení",
-        data=pdf_binary,
-        file_name=filename,
-        mime="application/pdf",
-        icon=":material/download:",
-        key=key
-    )
+    with col2:
+        st.markdown(
+            f"""
+            <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
+                display: flex; align-items: center; justify-content: center;
+                background-color: transparent; color: inherit; text-decoration: none;
+                padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(250, 250, 250, 0.2);
+                height: 42px; width: 100%; font-family: inherit; font-size: 16px;
+                box-sizing: border-box; transition: border-color 0.2s;
+            " onmouseover="this.style.borderColor='rgba(250, 250, 250, 0.5)'" onmouseout="this.style.borderColor='rgba(250, 250, 250, 0.2)'">
+                ↗️ Otevřít v nové kartě
+            </a>
+            """,
+            unsafe_allow_html=True
+        )
 
 # =============================================================================
 # Login & Public Pages
