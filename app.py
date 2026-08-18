@@ -877,6 +877,11 @@ if page == "Dashboard":
         try:
             db_conn = get_db_connection()
             with db_conn.cursor() as db_cursor:
+                db_cursor.execute(
+                    "INSERT INTO pdf_archive (signature_id, author_email, client_name, pdf_file) VALUES (%s, %s, %s, %s)",
+                    (doc_signature, st.session_state.get("user_email", "Neznámý"), pdf_client,
+                     psycopg2.Binary(pdf_bytes))
+                )
         except Exception as e:
             st.warning(f"Kalkulace vygenerována, ale nepodařilo se ji uložit do archivu: {e}")
 
