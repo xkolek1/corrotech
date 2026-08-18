@@ -398,9 +398,16 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    """Bezpečné zobrazení PDF v nové kartě pomocí JS Blobu (obchází restrikce Chromia)."""
-    import base64
-    import streamlit.components.v1 as components
+    """Bezpečné zobrazení PDF s děděním barev z config.toml."""
+
+    try:
+        primary_color = st.get_option("theme.primaryColor") or "#f39c12"
+        text_color = st.get_option("theme.textColor") or "#ffffff"
+        bg_color = st.get_option("theme.backgroundColor") or "#121212"
+    except Exception:
+        primary_color = "#f39c12"
+        text_color = "#ffffff"
+        bg_color = "#121212"
 
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
@@ -413,11 +420,13 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
                 margin: 0;
                 padding: 0;
                 font-family: "Source Sans Pro", sans-serif;
+                background-color: {bg_color}; /* Zděděno z config.toml */
             }}
             .container {{
                 display: flex;
                 gap: 15px;
                 padding: 10px 0;
+                margin-bottom: 15px;
             }}
             .btn {{
                 flex: 1;
@@ -429,54 +438,61 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
                 cursor: pointer;
                 border: none;
                 font-size: 16px;
-                transition: 0.2s;
+                transition: filter 0.2s, border-color 0.2s, color 0.2s;
             }}
-            /* Hlavní tlačítko pro otevření (vypadá jako Streamlit Primary) */
+            /* Hlavní tlačítko */
             .btn-open {{
-                background-color: #FF4B4B;
-                color: white;
+                background-color: {primary_color}; /* Zděděno z config.toml */
+                color: {bg_color}; /* Zděděno z config.toml (aby byl text kontrastní) */
             }}
             .btn-open:hover {{
-                background-color: #ff3333;
+                filter: brightness(0.85); /* Univerzální ztmavení nezávisle na barvě */
             }}
-            /* Vedlejší tlačítko pro uložení (vypadá jako Streamlit Secondary) */
+            /* Vedlejší tlačítko */
             .btn-down {{
                 background-color: transparent;
-                color: #FAFAFA;
-                border: 1px solid rgba(250, 250, 250, 0.3);
+                color: {text_color}; /* Zděděno z config.toml */
+                border: 1px solid {text_color}40; /* Barva textu s 25% průhledností (40 v HEX) */
             }}
             .btn-down:hover {{
-                border-color: rgba(250, 250, 250, 0.7);
+                border-color: {primary_color};
+                color: {primary_color};
+            }}
+            /* Náhled PDF */
+            #pdf-preview {{
+                width: 100%;
+                height: 800px;
+                border: 1px solid {text_color}33; /* 20% průhlednost */
+                border-radius: 0.5rem;
             }}
         </style>
     </head>
     <body>
         <div class="container">
-            <!-- Tlačítko volající JS funkci -->
             <button class="btn btn-open" onclick="openPdf()">
                ↗️ Otevřít PDF v nové kartě
             </button>
-            <!-- Tlačítko pro klasické přímé stažení -->
             <a class="btn btn-down" href="data:application/pdf;base64,{b64_pdf}" download="{filename}">
                ⬇️ Uložit do zařízení
             </a>
         </div>
 
+        <iframe id="pdf-preview" type="application/pdf"></iframe>
+
         <script>
+        const b64 = "{b64_pdf}";
+        const byteCharacters = atob(b64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {{
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }}
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+        const blobUrl = URL.createObjectURL(blob);
+
+        document.getElementById('pdf-preview').src = blobUrl;
+
         function openPdf() {{
-            const b64 = "{b64_pdf}";
-            const byteCharacters = atob(b64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {{
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }}
-            const byteArray = new Uint8Array(byteNumbers);
-
-            // Tvorba virtuálního souboru v paměti
-            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
-            const blobUrl = URL.createObjectURL(blob);
-
-            // Otevření bezpečné URL v nové kartě (Brave i Edge toto povolí)
             window.open(blobUrl, '_blank');
         }}
         </script>
@@ -484,8 +500,7 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
     </html>
     """
 
-    # Vykreslíme HTML komponentu o výšce pouhých 70px (tak akorát pro ta 2 tlačítka)
-    components.html(html_code, height=70)
+    components.html(html_code, height=900)
 
 # =============================================================================
 # Login & Public Pages
