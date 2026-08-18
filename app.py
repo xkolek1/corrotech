@@ -402,16 +402,28 @@ def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
 
     b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-    # HTML Tlačítko pro stažení, které obejde chyby Streamlit serverů
-    html_button = f"""
-    <a href="data:application/pdf;base64,{b64_pdf}" download="{filename}" 
-       style="display: block; padding: 0.5rem 1rem; background-color: #FF4B4B; color: white; 
-              text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold; margin-bottom: 20px;">
-       ⬇️ Stáhnout PDF do zařízení
-    </a>
-    """
-    st.markdown(html_button, unsafe_allow_html=True)
+    # 1. Náhled přímo na stránce
+    st.markdown("### Náhled dokumentu")
+    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
+    # 2. Tlačítka pro stažení a otevření v nové kartě
+    html_buttons = f"""
+    <div style="display: flex; gap: 15px; margin-top: 15px; margin-bottom: 20px;">
+        <a href="data:application/pdf;base64,{b64_pdf}" download="{filename}" 
+           style="flex: 1; padding: 0.5rem 1rem; background-color: #f39c12; color: white; 
+                  text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;">
+           ⬇️ Stáhnout PDF
+        </a>
+        <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" 
+           style="flex: 1; padding: 0.5rem 1rem; background-color: transparent; color: inherit; 
+                  text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;
+                  border: 1px solid rgba(250, 250, 250, 0.2); transition: 0.3s;">
+           ↗️ Otevřít na nové kartě
+        </a>
+    </div>
+    """
+    st.markdown(html_buttons, unsafe_allow_html=True)
 
 # =============================================================================
 # Login & Public Pages
@@ -888,18 +900,10 @@ if page == "Dashboard":
     if "ready_pdf_bytes" in st.session_state:
         st.success("✅ Kalkulace byla úspěšně vygenerována!")
 
-        import base64
-
-        b64 = base64.b64encode(st.session_state["ready_pdf_bytes"]).decode()
-
-        html_button = f"""
-                <a href="data:application/pdf;base64,{b64}" download="{st.session_state["ready_pdf_name"]}" 
-                   style="display: block; padding: 0.5rem 1rem; background-color: #FF4B4B; color: white; 
-                          text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;">
-                   ⬇️ Stáhnout PDF Kalkulaci (Přímé stažení)
-                </a>
-                """
-        st.markdown(html_button, unsafe_allow_html=True)
+        show_pdf(
+            pdf_binary=st.session_state["ready_pdf_bytes"],
+            filename=st.session_state["ready_pdf_name"]
+        )
 
 elif page == "Můj profil":
     st.title("Můj profil")
