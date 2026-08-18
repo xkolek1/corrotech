@@ -398,21 +398,21 @@ if not st.session_state["authenticated"]:
 # Helper function: Universal PDF Display
 # =============================================================================
 def show_pdf(pdf_binary, filename="Kalkulace.pdf", key=None):
-    import uuid
+    import base64
 
-    # Pojistka pro unikátní ID tlačítka, aby se nezasekávala cache Streamlitu
-    if key is None:
-        key = str(uuid.uuid4())
+    b64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
 
-    st.download_button(
-        label="Stáhnout PDF do zařízení",
-        data=bytes(pdf_binary),
-        file_name=filename,
-        mime="application/pdf",
-        icon=":material/download:",
-        key=f"dl_btn_{key}",
-        use_container_width=True
-    )
+    # HTML Tlačítko pro stažení, které obejde chyby Streamlit serverů
+    html_button = f"""
+    <a href="data:application/pdf;base64,{b64_pdf}" download="{filename}" 
+       style="display: block; padding: 0.5rem 1rem; background-color: #FF4B4B; color: white; 
+              text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold; margin-bottom: 20px;">
+       ⬇️ Stáhnout PDF do zařízení
+    </a>
+    """
+    st.markdown(html_button, unsafe_allow_html=True)
+
+
 # =============================================================================
 # Login & Public Pages
 # =============================================================================
@@ -862,8 +862,14 @@ if page == "Dashboard":
         pdf.draw_table(products_data, main_loss=int(pdf_loss), celkova_plocha=pdf_area, sys_type=pdf_sys_type,
                        pozn=pdf_pozn)
 
-        # ČISTÉ ŘEŠENÍ: Vygenerování PDF přímo do bytů bez ukládání na disk
-        pdf_bytes = bytes(pdf.output())
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        tmp_name = tmp.name
+        tmp.close()
+
+        pdf.output(tmp_name)
+        with open(tmp_name, "rb") as f:
+            pdf_bytes = f.read()
+        os.remove(tmp_name)
 
         try:
             db_conn = get_db_connection()
@@ -876,25 +882,24 @@ if page == "Dashboard":
         except Exception as e:
             st.warning(f"Kalkulace vygenerována, ale nepodařilo se ji uložit do archivu: {e}")
 
-        # Uložíme hotový soubor do session_state, aby ho smazání tlačítka "Vygenerovat" nezabilo
         st.session_state["ready_pdf_bytes"] = pdf_bytes
         st.session_state["ready_pdf_name"] = f"Kalkulace_{selected_client if selected_client else 'Neznamy'}.pdf"
-        st.session_state["ready_pdf_sig"] = doc_signature
 
-        # -----------------------------------------------------------
-        # Tlačítko na stažení je teď MIMO samotné generování.
-        # Jakmile uživatel vygeneruje PDF, tohle tlačítko naskočí.
-        # -----------------------------------------------------------
     if "ready_pdf_bytes" in st.session_state:
         st.success("✅ Kalkulace byla úspěšně vygenerována!")
-        st.download_button(
-            label="Stáhnout PDF Kalkulaci",
-            data=st.session_state["ready_pdf_bytes"],
-            file_name=st.session_state["ready_pdf_name"],
-            mime="application/pdf",
-            icon=":material/download:",
-            key=f"dl_new_{st.session_state['ready_pdf_sig']}"
-        )
+
+        import base64
+
+        b64 = base64.b64encode(st.session_state["ready_pdf_bytes"]).decode()
+
+        html_button = f"""
+                <a href="data:application/pdf;base64,{b64}" download="{st.session_state["ready_pdf_name"]}" 
+                   style="display: block; padding: 0.5rem 1rem; background-color: #FF4B4B; color: white; 
+                          text-align: center; text-decoration: none; border-radius: 0.5rem; font-weight: bold;">
+                   ⬇️ Stáhnout PDF Kalkulaci (Přímé stažení)
+                </a>
+                """
+        st.markdown(html_button, unsafe_allow_html=True)
 
 elif page == "Můj profil":
     st.title("Můj profil")
