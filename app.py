@@ -93,7 +93,8 @@ def login_form():
                         new_token = str(uuid4())
                         set_session_token(logged_in_data["id"], new_token)
                         expire_date = datetime.datetime.now() + datetime.timedelta(days=7)
-                        cookie_manager.set("cpq_session", new_token, expires_at=expire_date, secure=True, samesite="Lax")
+                        # Odstraněny parametry secure a samesite, které knihovna nepodporuje
+                        cookie_manager.set("cpq_session", new_token, expires_at=expire_date)
 
                     time.sleep(0.2)
                     st.rerun()
