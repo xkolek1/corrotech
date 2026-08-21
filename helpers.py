@@ -161,15 +161,3 @@ def sanitize_filename(name):
     safe_name = re.sub(r'\s+', '_', safe_name)
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '', safe_name)
     return safe_name.strip('_')
-
-def validate_password_complexity(pwd):
-    """Zkontroluje, zda heslo splňuje minimální bezpečnostní požadavky."""
-    if len(pwd) < 8:
-        return "Heslo musí mít alespoň 8 znaků."
-    if not re.search(r"[A-Z]", pwd):
-        return "Heslo musí obsahovat alespoň jedno velké písmeno."
-    if not re.search(r"\d", pwd):
-        return "Heslo musí obsahovat alespoň jedno číslo."
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>\-_+=\[\]\/\\]", pwd):
-        return "Heslo musí obsahovat alespoň jeden speciální znak."
-    return None
