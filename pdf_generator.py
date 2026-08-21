@@ -3,7 +3,6 @@
 from fpdf import FPDF
 import datetime
 
-
 class KalkulacePDF(FPDF):
     """Šablona pro generování cenových a materiálových kalkulací v PDF."""
 
