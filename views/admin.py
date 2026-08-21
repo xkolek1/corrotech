@@ -6,7 +6,6 @@ from db_manager import (
     add_client, update_client, delete_client,
     add_product, update_product, delete_product
 )
-from helpers import validate_password_complexity
 
 def render_admin():
     st.title("Správa systému")
@@ -32,10 +31,7 @@ def render_admin():
                 n_pass = st.text_input("Heslo", type="password", autocomplete="new-password")
                 if st.form_submit_button("Vytvořit účet"):
                     if all([n_id, n_name, n_email, n_pass]):
-                        pwd_error = validate_password_complexity(n_pass)
-                        if pwd_error:
-                            st.error(pwd_error)
-                        elif add_user(n_id, n_email, n_name, n_role, n_phone, n_pass):
+                        if add_user(n_id, n_email, n_name, n_role, n_phone, n_pass):
                             st.success("Přidáno!")
                             st.rerun()
                         else:
@@ -58,11 +54,8 @@ def render_admin():
                     e_pass = st.text_input("Nové heslo (nepovinné)", type="password", autocomplete="new-password")
                     if st.form_submit_button("Uložit"):
                         if e_id and e_name and e_email:
-                            pwd_error = validate_password_complexity(e_pass) if e_pass else None
-                            if pwd_error:
-                                st.error(pwd_error)
-                            elif update_user(str(u_row['id']), e_id, e_email, e_name, e_role, e_phone,
-                                             e_pass if e_pass else None):
+                            if update_user(str(u_row['id']), e_id, e_email, e_name, e_role, e_phone,
+                                           e_pass if e_pass else None):
                                 st.success("Uloženo!")
                                 if u_row['email'] == st.session_state['user_email']:
                                     st.session_state.update({'user_name': e_name, 'user_role': e_role, 'user_id': e_id,
