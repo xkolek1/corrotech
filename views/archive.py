@@ -17,14 +17,15 @@ def render_archive():
 
     @st.dialog("Potvrzení smazání")
     def confirm_delete_dialog(sig_id):
-        st.warning("Opravdu chceš nenávratně smazat tuto kalkulaci z archivu? Tuto akci nelze vzít zpět.")
+        st.warning("Opravdu chceš smazat tuto kalkulaci z archivu?")
         dc1, dc2 = st.columns(2)
         with dc1:
             if st.button("Ano, smazat", type="primary", use_container_width=True):
                 try:
                     conn = get_db_connection()
                     with conn.cursor() as c:
-                        c.execute("DELETE FROM pdf_archive WHERE signature_id = %s", (sig_id,))
+                        # FYZICKY NEMAŽEME, JEN SKRYJEME!
+                        c.execute("UPDATE pdf_archive SET is_deleted = TRUE WHERE signature_id = %s", (sig_id,))
                     st.success("Smazáno!")
                     time.sleep(0.5)
                     st.rerun()
@@ -40,7 +41,7 @@ def render_archive():
     with tab1:
         with db_conn.cursor(cursor_factory=RealDictCursor) as v_cursor:
             v_cursor.execute(
-                "SELECT signature_id, created_at, client_name, is_final, doc_no FROM pdf_archive WHERE author_email = %s ORDER BY created_at DESC",
+                "SELECT signature_id, created_at, client_name, is_final, doc_no FROM pdf_archive WHERE author_email = %s AND is_deleted = FALSE ORDER BY created_at DESC",
                 (st.session_state["user_email"],)
             )
             my_docs = v_cursor.fetchall()
@@ -110,7 +111,7 @@ def render_archive():
     with tab2:
         with db_conn.cursor(cursor_factory=RealDictCursor) as v_cursor:
             v_cursor.execute(
-                "SELECT signature_id, created_at, client_name, author_email, doc_no FROM pdf_archive WHERE is_final = TRUE ORDER BY created_at DESC"
+                "SELECT signature_id, created_at, client_name, author_email, doc_no FROM pdf_archive WHERE is_final = TRUE AND is_deleted = FALSE ORDER BY created_at DESC"
             )
             shared_docs = v_cursor.fetchall()
 

@@ -7,8 +7,6 @@ def render_profile():
     st.title("Můj profil")
     st.write("Zde si můžeš změnit své heslo pro přístup do systému.")
 
-    st.subheader("Změna hesla")
-
     old_pwd = st.text_input("Stávající heslo", type="password", autocomplete="current-password")
     new_pwd1 = st.text_input("Nové heslo", type="password", autocomplete="new-password")
 
@@ -26,7 +24,6 @@ def render_profile():
     """)
 
     new_pwd2 = st.text_input("Nové heslo znovu (pro kontrolu)", type="password", autocomplete="new-password")
-
     all_reqs_met = req_length and req_upper and req_digit and req_spec
 
     if st.button("Změnit heslo", type="primary"):
@@ -36,10 +33,12 @@ def render_profile():
             st.error("Nová hesla se neshodují.")
         elif not all_reqs_met:
             st.error("Nové heslo nesplňuje všechny bezpečnostní požadavky.")
-        elif authenticate_user(st.session_state["user_email"], old_pwd):
-            update_user(st.session_state["user_id"], st.session_state["user_id"], st.session_state["user_email"],
-                        st.session_state["user_name"], st.session_state["user_role"],
-                        st.session_state.get("user_phone", ""), new_pwd1)
-            st.success("Heslo bylo úspěšně změněno!")
         else:
-            st.error("Stávající heslo není správné.")
+            auth_res = authenticate_user(st.session_state["user_email"], old_pwd)
+            if auth_res.get("status") == "success":
+                update_user(st.session_state["user_id"], st.session_state["user_id"], st.session_state["user_email"],
+                            st.session_state["user_name"], st.session_state["user_role"],
+                            st.session_state.get("user_phone", ""), new_pwd1)
+                st.success("Heslo bylo úspěšně změněno!")
+            else:
+                st.error(auth_res.get("msg", "Stávající heslo není správné."))

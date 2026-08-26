@@ -3,6 +3,9 @@
 import re
 import unicodedata
 import base64
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -161,3 +164,33 @@ def sanitize_filename(name):
     safe_name = re.sub(r'\s+', '_', safe_name)
     safe_name = re.sub(r'[^A-Za-z0-9_.-]', '', safe_name)
     return safe_name.strip('_')
+
+
+def send_admin_notification(subject, message):
+    """Odešle e-mail administrátorovi přes SMTP server nastavený v secrets."""
+    try:
+        # Načtení konfigurace ze secrets
+        smtp_server = st.secrets["smtp"]["server"]
+        smtp_port = st.secrets["smtp"]["port"]
+        smtp_user = st.secrets["smtp"]["username"]
+        smtp_pass = st.secrets["smtp"]["password"]
+        admin_email = st.secrets["smtp"]["admin_email"]
+
+        # Sestavení zprávy (MIME)
+        msg = MIMEMultipart()
+        msg['From'] = smtp_user
+        msg['To'] = admin_email
+        msg['Subject'] = subject
+
+        # Připojení těla zprávy
+        msg.attach(MIMEText(message, 'plain', 'utf-8'))
+
+        # Odeslání přes zabezpečené TLS spojení
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+
+    except Exception as e:
+        # Pokud spojení selže, nesmí to shodit aplikaci, jen to vypíšeme do logu
+        print(f"Chyba při odesílání e-mailu: {e}")

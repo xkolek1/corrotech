@@ -10,6 +10,7 @@ import re
 import unicodedata
 from functools import lru_cache
 import datetime
+from helpers import send_admin_notification
 
 DATABASE_URL = st.secrets["postgres"]["DATABASE_URL"]
 
@@ -137,8 +138,25 @@ def load_client_invoices(client_ic):
 # Auth & User Management Helpers
 # =============================================================================
 def authenticate_user(email, password):
+    from helpers import send_admin_notification
     db_conn = get_db_connection()
     with db_conn.cursor(cursor_factory=RealDictCursor) as db_cursor:
+
+        # 1. Úklid: Smažeme pokusy starší než 10 minut, ať nám tabulka nebobtná
+        db_cursor.execute("DELETE FROM login_attempts WHERE attempt_time < NOW() - INTERVAL '10 minutes'")
+        db_conn.commit()
+
+        # 2. Spočítáme nedávné pokusy pro zadaný e-mail
+        db_cursor.execute("SELECT COUNT(*) as attempts FROM login_attempts WHERE email = %s", (email,))
+        recent_attempts = db_cursor.fetchone()['attempts']
+
+        generic_error = {"status": "error", "msg": "Nesprávný e-mail nebo heslo."}
+
+        # Pokud už to zkusil 5x za posledních 10 minut, rovnou ho zařízneme
+        if recent_attempts >= 5:
+            return {"status": "locked", "msg": "Účet je z bezpečnostních důvodů uzamčen."}
+
+        # 3. Pokusíme se najít uživatele
         db_cursor.execute("SELECT id, name, role, password_hash, phone_number FROM users WHERE email = %s", (email,))
         result = db_cursor.fetchone()
 
@@ -147,15 +165,32 @@ def authenticate_user(email, password):
             if isinstance(pwd_hash, str):
                 pwd_hash = pwd_hash.encode('utf-8')
 
+            # 4. Ověření hesla
             if bcrypt.checkpw(password.encode('utf-8'), pwd_hash):
+                # Úspěch - vymažeme jeho historii chyb, ať má čistý štít
+                db_cursor.execute("DELETE FROM login_attempts WHERE email = %s", (email,))
+                db_conn.commit()
                 return {
-                    "id": result['id'],
-                    "name": result['name'],
-                    "role": result['role'],
-                    "email": email,
-                    "phone": result['phone_number']
+                    "status": "success",
+                    "user": {
+                        "id": result['id'], "name": result['name'], "role": result['role'],
+                        "email": email, "phone": result['phone_number']
+                    }
                 }
-    return None
+
+        # 5. Pokud se kód dostal sem, heslo je špatné nebo e-mail neexistuje.
+        # Zapíšeme pokus do databáze.
+        db_cursor.execute("INSERT INTO login_attempts (email) VALUES (%s)", (email,))
+        db_conn.commit()
+
+        # Pokud tohle byl přesně 5. pokus, pošleme ti varování
+        if recent_attempts + 1 == 5:
+            send_admin_notification(
+                "Bezpečnostní varování: Brute-force",
+                f"Zaznamenáno 5 neúspěšných pokusů o přihlášení na e-mail: {email}."
+            )
+
+        return generic_error
 
 def add_user(user_id, email, name, role, phone_number, password):
     salt = bcrypt.gensalt()

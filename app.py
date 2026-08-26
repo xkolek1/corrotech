@@ -8,7 +8,7 @@ import streamlit as st
 import extra_streamlit_components as stx
 from psycopg2.extras import RealDictCursor
 
-# Připojení k DB a správa přihlášení
+# DB management functions
 from db_manager import (
     get_db_connection,
     get_user_by_token,
@@ -17,10 +17,10 @@ from db_manager import (
     clear_session_token
 )
 
-# Pomocné funkce pro veřejnou ověřovací stránku
+# Helper functions
 from helpers import show_pdf, sanitize_filename
 
-# Jednotlivé stránky
+# View rendering functions
 from views.dashboard import render_dashboard
 from views.clients import render_clients
 from views.analytics import render_analytics
@@ -47,7 +47,12 @@ if "authenticated" not in st.session_state:
 cookie_manager = stx.CookieManager()
 
 if not st.session_state["authenticated"]:
-    stored_token = cookie_manager.get("cpq_session")
+    if st.session_state.get("logout_pending"):
+        stored_token = None
+        del st.session_state["logout_pending"]
+    else:
+        stored_token = cookie_manager.get("cpq_session")
+
     if stored_token:
         fetched_user_data = get_user_by_token(stored_token)
         if fetched_user_data:
@@ -78,28 +83,29 @@ def login_form():
             submit = st.form_submit_button("Přihlásit se", use_container_width=True)
 
             if submit:
-                logged_in_data = authenticate_user(email, password)
-                if logged_in_data:
+                auth_res = authenticate_user(email, password)
+
+                if auth_res and auth_res.get("status") == "success":
+                    usr = auth_res["user"]
                     st.session_state.update({
                         "authenticated": True,
-                        "user_id": logged_in_data["id"],
-                        "user_email": logged_in_data["email"],
-                        "user_name": logged_in_data["name"],
-                        "user_role": logged_in_data["role"],
-                        "user_phone": logged_in_data["phone"]
+                        "user_id": usr["id"],
+                        "user_email": usr["email"],
+                        "user_name": usr["name"],
+                        "user_role": usr["role"],
+                        "user_phone": usr["phone"]
                     })
 
                     if remember_me:
                         new_token = str(uuid4())
-                        set_session_token(logged_in_data["id"], new_token)
+                        set_session_token(usr["id"], new_token)
                         expire_date = datetime.datetime.now() + datetime.timedelta(days=7)
-                        # Odstraněny parametry secure a samesite, které knihovna nepodporuje
                         cookie_manager.set("cpq_session", new_token, expires_at=expire_date)
 
                     time.sleep(0.2)
                     st.rerun()
-                else:
-                    st.error("Špatný e-mail nebo heslo.")
+                elif auth_res:
+                    st.error(auth_res.get("msg", "Špatný e-mail nebo heslo."))
 
 
 def render_verify_page():
@@ -215,9 +221,16 @@ st.sidebar.markdown("---")
 if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_width=True, type="secondary"):
     if st.session_state.get("user_id"):
         clear_session_token(st.session_state["user_id"])
-    if cookie_manager.get("cpq_session"):
+
+    try:
         cookie_manager.delete("cpq_session")
+    except KeyError:
+        pass
+
     st.session_state.clear()
+    st.session_state["logout_pending"] = True
+    st.session_state["authenticated"] = False
+
     time.sleep(0.2)
     st.rerun()
 
