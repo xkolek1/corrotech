@@ -46,6 +46,18 @@ if "authenticated" not in st.session_state:
 
 cookie_manager = stx.CookieManager()
 
+if st.session_state.get("set_cookie"):
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=7)
+    cookie_manager.set("cpq_session", st.session_state["set_cookie"], expires_at=expire_date)
+    del st.session_state["set_cookie"]
+
+if st.session_state.get("delete_cookie"):
+    try:
+        cookie_manager.delete("cpq_session")
+    except KeyError:
+        pass
+    del st.session_state["delete_cookie"]
+
 if not st.session_state["authenticated"]:
     stored_token = cookie_manager.get("cpq_session")
 
@@ -101,10 +113,8 @@ def login_form():
                     if remember_me:
                         new_token = str(uuid4())
                         set_session_token(usr["id"], new_token)
-                        expire_date = datetime.datetime.now() + datetime.timedelta(days=7)
-                        cookie_manager.set("cpq_session", new_token, expires_at=expire_date)
-
-                    time.sleep(0.2)
+                        st.session_state["set_cookie"] = new_token
+                    time.sleep(0.1)
                     st.rerun()
                 elif auth_res:
                     st.error(auth_res.get("msg", "Špatný e-mail nebo heslo."))
@@ -223,15 +233,14 @@ st.sidebar.markdown("---")
 if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_width=True, type="secondary"):
     if st.session_state.get("user_id"):
         clear_session_token(st.session_state["user_id"])
-    try:
-        cookie_manager.delete("cpq_session")
-    except KeyError:
-        pass
+
+    st.session_state["delete_cookie"] = True
 
     for key in list(st.session_state.keys()):
-        del st.session_state[key]
+        if key != "delete_cookie":
+            del st.session_state[key]
 
-    time.sleep(0.8)
+    time.sleep(0.1)
     st.rerun()
 
 st.sidebar.markdown("---")
