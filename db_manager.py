@@ -309,7 +309,6 @@ def clear_session_token(user_id):
         db_cursor.execute("UPDATE users SET session_token = NULL WHERE id = %s", (user_id,))
     load_users.clear()
 
-@lru_cache(maxsize=128)
 def get_user_by_token(token):
     token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     db_conn = get_db_connection()

@@ -47,14 +47,11 @@ if "authenticated" not in st.session_state:
 cookie_manager = stx.CookieManager()
 
 if not st.session_state["authenticated"]:
-    if st.session_state.get("logout_pending"):
-        stored_token = None
-        del st.session_state["logout_pending"]
-    else:
-        stored_token = cookie_manager.get("cpq_session")
+    stored_token = cookie_manager.get("cpq_session")
 
     if stored_token:
         fetched_user_data = get_user_by_token(stored_token)
+
         if fetched_user_data:
             st.session_state.update({
                 "authenticated": True,
@@ -65,6 +62,11 @@ if not st.session_state["authenticated"]:
                 "user_phone": fetched_user_data["phone"]
             })
             st.rerun()
+        else:
+            try:
+                cookie_manager.delete("cpq_session")
+            except KeyError:
+                pass
 
 # =============================================================================
 # Login & Public Pages
@@ -221,17 +223,15 @@ st.sidebar.markdown("---")
 if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_width=True, type="secondary"):
     if st.session_state.get("user_id"):
         clear_session_token(st.session_state["user_id"])
-
     try:
         cookie_manager.delete("cpq_session")
     except KeyError:
         pass
 
-    st.session_state.clear()
-    st.session_state["logout_pending"] = True
-    st.session_state["authenticated"] = False
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
 
-    time.sleep(0.2)
+    time.sleep(0.8)
     st.rerun()
 
 st.sidebar.markdown("---")
