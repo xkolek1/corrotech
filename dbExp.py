@@ -4,12 +4,17 @@ from psycopg2.extras import execute_values
 from datetime import datetime
 import os
 
-# Zde doplň svoje údaje nebo to nech takto a spouštěj přes proměnnou prostředí
+# Database import configuration
 DATABASE_URL = os.environ.get("DATABASE_URL",
-                              "xx")
+                              "xx")  # Replace with your actual database URL or use environment variable
 
 
 def load_json_data(filepath):
+    """Načte JSON soubor a vrátí jeho obsah jako Python objekt.
+
+    Funkce používá UTF-8 s BOM kompatibilní dekódování, protože vstupní exporty
+    mohou pocházet z různých zdrojů. Při chybě vypíše hlášku a vrátí `None`.
+    """
     try:
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             return json.load(f)
@@ -19,6 +24,12 @@ def load_json_data(filepath):
 
 
 def import_invoices_from_jsons(headers_path, items_path):
+    """Naimportuje výdejky z dvojice JSON souborů do PostgreSQL.
+
+    Hlavičky slouží pro mapování výdejky na IČ klienta, položky obsahují
+    samotné prodejní řádky. Funkce doplní chybějící produkty, přeskočí záznamy
+    bez odpovídajícího klienta a vloží platné výdejky do tabulky `invoices`.
+    """
     print("Načítám JSON soubory ze složky data/...")
 
     headers_data_raw = load_json_data(headers_path)
@@ -32,7 +43,6 @@ def import_invoices_from_jsons(headers_path, items_path):
 
     print(f"Nalezeno {len(headers_data)} hlaviček a {len(items_data)} položek.")
 
-    # 1. Vytvoření mapování: Cislo -> icOdber
     ico_mapping = {}
     for header in headers_data:
         vydejka_id = str(header.get('Cislo', '')).strip()
@@ -41,7 +51,6 @@ def import_invoices_from_jsons(headers_path, items_path):
         if vydejka_id:
             ico_mapping[vydejka_id] = client_ic
 
-    # 2. Připojení k databázi
     print("Připojuji se k databázi...")
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -51,18 +60,16 @@ def import_invoices_from_jsons(headers_path, items_path):
         print(f"Chyba připojení k DB: {e}")
         return
 
-    # Stažení všech existujících IČ z databáze, abychom do clients nezasahovali
     cursor.execute("SELECT ic FROM clients")
     existing_clients = {str(row[0]).strip() for row in cursor.fetchall()}
     print(f"V databázi nalezeno {len(existing_clients)} existujících klientů.")
 
     records_to_insert = []
     unique_products = set()
-    reported_missing_invoices = set()  # Pro zabránění spamu v konzoli pro stejnou výdejku
+    reported_missing_invoices = set()
 
     print("Analyzuji položky...")
 
-    # 3. Zpracování položek a filtrace podle existujících klientů
     for item in items_data:
         vydejka_id = str(item.get('Cislo', '')).strip()
         product_id = str(item.get('CisloZbozi', '')).strip()
@@ -72,7 +79,6 @@ def import_invoices_from_jsons(headers_path, items_path):
 
         client_ic = ico_mapping.get(vydejka_id, "")
 
-        # --- OCHRANA TABULKY CLIENTS ---
         if not client_ic or client_ic not in existing_clients:
             if vydejka_id not in reported_missing_invoices:
                 print(
@@ -80,7 +86,6 @@ def import_invoices_from_jsons(headers_path, items_path):
                 reported_missing_invoices.add(vydejka_id)
             continue
 
-        # Pokud klient existuje, produkt zařadíme k založení do DB
         unique_products.add(product_id)
 
         try:
@@ -120,7 +125,6 @@ def import_invoices_from_jsons(headers_path, items_path):
         return
 
     try:
-        # --- Doplnění chybějících PRODUKTŮ ---
         products_to_insert = [(p_id, p_id, 0.0) for p_id in unique_products]
         if products_to_insert:
             insert_products_query = """
@@ -131,7 +135,6 @@ def import_invoices_from_jsons(headers_path, items_path):
 
         conn.commit()
 
-        # --- Zápis samotných VÝDEJEK ---
         print(f"Zapisuji {len(records_to_insert)} záznamů do tabulky invoices...")
         insert_invoices_query = """
                                 INSERT INTO invoices (id, client_ic, product_id, purchase_date, quantity, price)

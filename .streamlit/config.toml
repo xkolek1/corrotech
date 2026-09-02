@@ -1,0 +1,18 @@
+[theme]
+# The base theme to inherit from (fallback)
+base="dark"
+
+# Primary accent color for interactive elements (buttons, active tabs)
+primaryColor="#f39c12"
+
+# Main background color of the app
+backgroundColor="#121212"
+
+# Background of the sidebar, cards, and input fields
+secondaryBackgroundColor="#1e1e1e"
+
+# Main text color
+textColor="#ffffff"
+
+# Font family
+font="sans serif"

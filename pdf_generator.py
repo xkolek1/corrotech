@@ -1,12 +1,13 @@
+"""PDF generator for CORROTECH quotations."""
+
 from fpdf import FPDF
 import datetime
 
-
-# -----------------------------------------------------------------------------
-# PDF Template Definition
-# -----------------------------------------------------------------------------
 class KalkulacePDF(FPDF):
-    def __init__(self, user_info=None, validity_date= "nevyplněno", *args, **kwargs):
+    """Šablona pro generování cenových a materiálových kalkulací v PDF."""
+
+    def __init__(self, user_info=None, validity_date="nevyplněno", signature_id="NEOVĚŘENO", *args, **kwargs):
+        """Inicializuje šablonu PDF a připraví výchozí hodnoty dokumentu."""
         super().__init__(*args, **kwargs)
 
         self.user_info = user_info or {
@@ -15,17 +16,19 @@ class KalkulacePDF(FPDF):
             "email": "ostrava@corrotech.com"
         }
         self.validity_date = validity_date
+        self.signature_id = signature_id
 
-        font_regular = r"C:\Windows\Fonts\arial.ttf"
-        font_bold = r"C:\Windows\Fonts\arialbd.ttf"
-        self.add_font("Arial", "", font_regular)
-        self.add_font("Arial", "B", font_bold)
+        font_regular = "fonts/arial.ttf"
+        font_bold = "fonts/arialbd.ttf"
+        self.add_font("Arial", "", font_regular, uni=True)
+        self.add_font("Arial", "B", font_bold, uni=True)
 
         self.sum_teor_cena_m2 = 0.0
         self.sum_teor_cena = 0.0
         self.main_loss = 50
 
     def dashed_line(self, x1, y1, x2, y2, dash_length=1, space_length=1):
+        """Vykreslí přerušovanou čáru mezi dvěma body."""
         length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         if length == 0:
             return
@@ -51,6 +54,7 @@ class KalkulacePDF(FPDF):
 
     @staticmethod
     def format_val(val):
+        """Naformátuje číselnou hodnotu pro tisk do PDF."""
         if val is None or val == "":
             return ""
         try:
@@ -63,6 +67,7 @@ class KalkulacePDF(FPDF):
 
     @staticmethod
     def format_int(val):
+        """Naformátuje hodnotu jako celé číslo vhodné pro PDF."""
         if val is None or val == "":
             return ""
         try:
@@ -73,6 +78,7 @@ class KalkulacePDF(FPDF):
 
     @staticmethod
     def safe_float(val):
+        """Převede vstup na float a při chybě vrátí nulu."""
         if val is None or val == "": return 0.0
         try:
             return float(str(val).replace(',', '.'))
@@ -80,6 +86,7 @@ class KalkulacePDF(FPDF):
             return 0.0
 
     def header(self):
+        """Vykreslí hlavičku každé stránky PDF."""
         self.set_xy(10, 11)
         self.set_font("Arial", "B", 12)
         self.cell(0, 8, "Cenová a materiálová kalkulace nátěrových hmot", border=0, align="L")
@@ -92,6 +99,7 @@ class KalkulacePDF(FPDF):
             pass
 
     def draw_template_grid(self, header_data):
+        """Vykreslí horní informační blok kalkulace."""
         start_y = 24
         line_height = 5
 
@@ -127,12 +135,10 @@ class KalkulacePDF(FPDF):
         self.set_x(215)
         self.set_font("Arial", "", 9)
 
-        # Zpracování dynamického víceřádkového textu firmy
         client_start_y = self.get_y()
         self.multi_cell(80, line_height, header_data.get("client_company", ""), align="L")
         client_end_y = self.get_y()
 
-        # Nalezení spodní hrany (z leva vs zprava)
         current_y = max(start_y + len(labels_keys) * line_height, client_end_y) + 2
         self.set_xy(10, current_y)
 
@@ -153,6 +159,7 @@ class KalkulacePDF(FPDF):
         self.set_left_margin(orig_l_margin)
 
     def draw_table(self, products_data, main_loss=50, celkova_plocha=1.0, sys_type="", pozn=""):
+        """Vykreslí tabulku s vrstevnicemi nátěrových hmot a souvisejícími výpočty."""
         self.main_loss = main_loss
         self.set_y(self.get_y() + 4)
 
@@ -293,7 +300,7 @@ class KalkulacePDF(FPDF):
                 self.format_val(m_plocha_proc), self.format_val(t_vyd) if t_vyd else "",
                 self.format_val(t_spot) if t_spot else "",
                 self.format_val(c_m2_t) if c_m2_t else "", self.format_int(c_celk_t) if c_celk_t else "",
-                self.format_val(self.main_loss),  # Zde se tiskne globální ztráta
+                self.format_val(self.main_loss),
                 self.format_val(main_row.get("redeni", "")), self.format_val(p_vyd) if p_vyd else "",
                 self.format_val(p_spot) if p_spot else "", self.format_val(m_c_l),
                 self.format_val(c_m2_p) if c_m2_p else "",
@@ -413,6 +420,7 @@ class KalkulacePDF(FPDF):
         self.sum_teor_cena = sum_teor_cena
 
     def footer(self):
+        """Vykreslí patičku s upozorněním, kontakty a podpisovým kódem."""
         self.set_y(-35)
         y_start = self.get_y()
 
@@ -498,3 +506,8 @@ class KalkulacePDF(FPDF):
             pass
         self.set_xy(240, y_pos + 1)
         self.cell(50, 5, "Člen asociace korozních inženýrů", align="L")
+
+        self.set_y(-6)
+        self.set_font("Arial", "", 6)
+        self.set_text_color(150, 150, 150)
+        self.cell(0, 4, f"Elektronická stopa dokumentu (ID): {self.signature_id}", align="R")
