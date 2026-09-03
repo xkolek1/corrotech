@@ -137,50 +137,32 @@ def load_client_invoices(client_ic):
 # =============================================================================
 # Auth & User Management Helpers
 # =============================================================================
-# Dummy hash has the same work factor (cost) to prevent Timing attacks.
+# Dummy hash has the same work factor to prevent Timing attacks
 DUMMY_HASH = bcrypt.hashpw(b"dummy_password", bcrypt.gensalt())
-
-def get_client_ip():
-    """Extract client IP address from Streamlit headers safely."""
-    try:
-        headers = st.context.headers
-        # Proxy servery (včetně Streamlit Cloud)
-        if "X-Forwarded-For" in headers:
-            return headers["X-Forwarded-For"].split(",")[-1].strip()
-        # Přímá spojení nebo jiné proxy
-        elif "Remote-Addr" in headers:
-            return headers["Remote-Addr"].strip()
-        elif "Client-IP" in headers:
-            return headers["Client-IP"].strip()
-        return "unknown_ip"
-    except Exception:
-        return "unknown_ip"
-
 
 def authenticate_user(email, password):
     db_conn = get_db_connection()
-    ip_address = get_client_ip()
 
     with db_conn.cursor(cursor_factory=RealDictCursor) as db_cursor:
+
+        # 1. Cleanup starých pokusů
         db_cursor.execute("DELETE FROM login_attempts WHERE attempt_time < NOW() - INTERVAL '10 minutes'")
         db_conn.commit()
 
-        # FALLBACK LOGIKA: Pokud neznáme IP, omezujeme podle e-mailu. Jinak podle IP.
-        if ip_address == "unknown_ip":
-            db_cursor.execute("SELECT COUNT(*) as attempts FROM login_attempts WHERE email = %s", (email,))
-            lock_msg = "Tento účet je na 10 minut uzamčen z důvodu příliš mnoha pokusů."
-        else:
-            db_cursor.execute("SELECT COUNT(*) as attempts FROM login_attempts WHERE ip_address = %s", (ip_address,))
-            lock_msg = "Z vaší sítě bylo zaznamenáno příliš mnoho pokusů. Zkuste to za 10 minut."
-
+        # 2. Rate limiting podle e-mailu
+        db_cursor.execute("SELECT COUNT(*) as attempts FROM login_attempts WHERE email = %s", (email,))
         recent_attempts = db_cursor.fetchone()['attempts']
+
         generic_error = {"status": "error", "msg": "Nesprávný e-mail nebo heslo."}
 
+        # Zablokujeme konkrétní účet na 10 minut
         if recent_attempts >= 5:
-            return {"status": "locked", "msg": lock_msg}
+            return {"status": "locked", "msg": "Tento účet je na 10 minut uzamčen z důvodu příliš mnoha pokusů."}
 
+        # 3. Vyhledání uživatele
         db_cursor.execute("SELECT id, name, role, password_hash, phone_number FROM users WHERE email = %s", (email,))
         result = db_cursor.fetchone()
+
         is_valid_password = False
 
         if result:
@@ -189,20 +171,18 @@ def authenticate_user(email, password):
                 pwd_hash = pwd_hash.encode('utf-8')
             is_valid_password = bcrypt.checkpw(password.encode('utf-8'), pwd_hash)
         else:
+            # 4. Ochrana proti Timing attacku a okamžitá notifikace na neznámý mail
             bcrypt.checkpw(password.encode('utf-8'), DUMMY_HASH)
             send_admin_notification(
                 "Bezpečnostní varování: Neznámý e-mail v CPQ",
-                f"Pokus o přihlášení s neexistujícím e-mailem: {email} (IP: {ip_address})."
+                f"Pokus o přihlášení s neexistujícím e-mailem: {email}."
             )
 
+        # 5. Vyhodnocení
         if is_valid_password:
-            # Smažeme chyby v závislosti na tom, co jsme sledovali
-            if ip_address == "unknown_ip":
-                db_cursor.execute("DELETE FROM login_attempts WHERE email = %s", (email,))
-            else:
-                db_cursor.execute("DELETE FROM login_attempts WHERE ip_address = %s", (ip_address,))
+            # Čistý štít pro daný e-mail
+            db_cursor.execute("DELETE FROM login_attempts WHERE email = %s", (email,))
             db_conn.commit()
-
             return {
                 "status": "success",
                 "user": {
@@ -211,16 +191,15 @@ def authenticate_user(email, password):
                 }
             }
         else:
-            db_cursor.execute(
-                "INSERT INTO login_attempts (email, ip_address) VALUES (%s, %s)",
-                (email, ip_address)
-            )
+            # Zapíšeme chybný pokus na vrub e-mailu
+            db_cursor.execute("INSERT INTO login_attempts (email) VALUES (%s)", (email,))
             db_conn.commit()
 
+            # Pokud to byl právě 5. pokus, pošleme varování o zamknutí
             if recent_attempts + 1 == 5:
                 send_admin_notification(
-                    "Bezpečnostní varování: Brute-force útok",
-                    f"5 neúspěšných pokusů. IP: {ip_address}, Cílový e-mail: {email}."
+                    "Bezpečnostní varování: Účet uzamčen",
+                    f"Zaznamenáno 5 neúspěšných pokusů o přihlášení. Účet {email} byl na 10 minut uzamčen."
                 )
 
             return generic_error
