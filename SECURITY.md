@@ -14,6 +14,6 @@ Since this is an internal proprietary application (CORROTECH CPQ), only the late
 If you discover a security vulnerability within this project, please **do not open a public issue**. 
 
 Instead, please report it directly via email to the project maintainer:
-* **Email:** [Sem si napiš svůj soukromý/pracovní e-mail]
+* **Email:** matyas.kolek@gmail.com
 
 You can expect an initial response within 48 hours acknowledging receipt of the report. Since this is an internal tool, fixes will be applied directly to the production environment as needed.
