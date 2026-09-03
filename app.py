@@ -84,6 +84,7 @@ if not st.session_state["authenticated"]:
 # =============================================================================
 # Login & Public Pages
 # =============================================================================
+st.write(dict(st.context.headers))
 def login_form():
     _logo1, _logo2, _logo3 = st.columns([1, 1, 1])
     with _logo2:
