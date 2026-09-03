@@ -146,7 +146,7 @@ def get_client_ip():
         headers = st.context.headers
         # Proxy servery (včetně Streamlit Cloud)
         if "X-Forwarded-For" in headers:
-            return headers["X-Forwarded-For"].split(",")[0].strip()
+            return headers["X-Forwarded-For"].split(",")[-1].strip()
         # Přímá spojení nebo jiné proxy
         elif "Remote-Addr" in headers:
             return headers["Remote-Addr"].strip()
