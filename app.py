@@ -7,6 +7,7 @@ from uuid import uuid4
 import streamlit as st
 import extra_streamlit_components as stx
 from psycopg2.extras import RealDictCursor
+from ai_chat import render_ai_assistant
 
 # DB management functions
 from db_manager import (
@@ -229,6 +230,9 @@ if st.session_state["user_role"] == "Admin":
         st.session_state.current_page = "Správa systému (Admin)"
         st.rerun()
 
+with st.sidebar:
+    render_ai_assistant()
+
 st.sidebar.markdown("---")
 if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_width=True, type="secondary"):
     if st.session_state.get("user_id"):
@@ -242,6 +246,7 @@ if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_wid
 
     time.sleep(0.1)
     st.rerun()
+
 
 st.sidebar.markdown("---")
 page = st.session_state.current_page
