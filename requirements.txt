@@ -7,3 +7,4 @@ plotly
 fpdf2
 openpyxl
 numpy
+groq
