@@ -113,7 +113,7 @@ server = "smtp.gmail.com"
 port = 587
 username = "your-email@gmail.com"
 password = "your-app-password"
-admin_email = "admin@corrotech.com"
+admin_email = "admin"
 
 [AI]
 GROQ_API_KEY = "your-groq-api-key"
@@ -281,15 +281,13 @@ pip install -r requirements.txt
 
 ## License
 
-© 2024 CORROTECH OSTRAVA s.r.o. – Proprietary software.
+© 2026 CORROTECH OSTRAVA s.r.o. – Proprietary software.
 
 ## Support
 
-For questions, bugs, or feature requests:
-
-📧 **Email**: ostrava@corrotech.com  
-📱 **Phone**: +420 734 253 950  
-🌐 **Website**: www.corrotech.cz
+This app can be used free of charge, but only with the owner’s consent.
+For questions, bugs, or feature requests contact the owner.
+@xkolek1
 
 ---
 
