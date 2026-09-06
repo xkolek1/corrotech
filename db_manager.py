@@ -3,6 +3,7 @@
 import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import json
 import pandas as pd
 import bcrypt
 import hashlib
@@ -361,21 +362,31 @@ def generate_doc_number(user_id):
 
 def load_chat_history(user_id):
     """Načte historii chatu pro konkrétního uživatele."""
-    db_conn = get_db_connection()
-    with db_conn.cursor() as cur:
-        cur.execute("SELECT chat_data FROM ai_chat_logs WHERE user_id = %s", (user_id,))
-        result = cur.fetchone()
-        if result and result[0]:
-            return result[0]
-    return None
+    try:
+        db_conn = get_db_connection()
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT chat_data FROM ai_chat_logs WHERE user_id = %s", (str(user_id),))
+            result = cur.fetchone()
+            if result and result[0]:
+                return result[0]
+        return None
+    except Exception as e:
+        print(f"Chyba při načítání chatu: {e}")
+        return None
 
 def save_chat_history(user_id, chat_data):
-    """Uloží nebo přepíše historii chatu uživatele."""
-    db_conn = get_db_connection()
-    with db_conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO ai_chat_logs (user_id, chat_data, last_updated) 
-            VALUES (%s, %s, CURRENT_TIMESTAMP)
+    """Uloží historii chatu uživatele do databáze."""
+    try:
+        db_conn = get_db_connection()
+        with db_conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO ai_chat_logs (user_id, chat_data, last_updated) 
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE 
+                SET chat_data = EXCLUDED.chat_data, last_updated = CURRENT_TIMESTAMP
+            """, (str(user_id), json.dumps(chat_data)))
+    except Exception as e:
+        print(f"Chyba při ukládání chatu: {e}")
             ON CONFLICT (user_id) DO UPDATE 
             SET chat_data = EXCLUDED.chat_data, last_updated = CURRENT_TIMESTAMP
         """, (user_id, json.dumps(chat_data)))
