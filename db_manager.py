@@ -387,6 +387,3 @@ def save_chat_history(user_id, chat_data):
             """, (str(user_id), json.dumps(chat_data)))
     except Exception as e:
         print(f"Chyba při ukládání chatu: {e}")
-            ON CONFLICT (user_id) DO UPDATE 
-            SET chat_data = EXCLUDED.chat_data, last_updated = CURRENT_TIMESTAMP
-        """, (user_id, json.dumps(chat_data)))
