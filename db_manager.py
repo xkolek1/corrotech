@@ -357,3 +357,25 @@ def generate_doc_number(user_id):
 
     date_str = seq_date.strftime('%y%m%d')
     return f"{dealer_safe}-{date_str}-{last_seq:04d}"
+
+
+def load_chat_history(user_id):
+    """Načte historii chatu pro konkrétního uživatele."""
+    db_conn = get_db_connection()
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT chat_data FROM ai_chat_logs WHERE user_id = %s", (user_id,))
+        result = cur.fetchone()
+        if result and result[0]:
+            return result[0]
+    return None
+
+def save_chat_history(user_id, chat_data):
+    """Uloží nebo přepíše historii chatu uživatele."""
+    db_conn = get_db_connection()
+    with db_conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO ai_chat_logs (user_id, chat_data, last_updated) 
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) DO UPDATE 
+            SET chat_data = EXCLUDED.chat_data, last_updated = CURRENT_TIMESTAMP
+        """, (user_id, json.dumps(chat_data)))
