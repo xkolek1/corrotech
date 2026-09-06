@@ -25,19 +25,36 @@ def render_ai_assistant():
     5. Pokud se dotaz zjevně netýká obchodu, barev, naší aplikace nebo cenotvorby, stroze debatu ukonči s tím, že jsi specializovaný CPQ asistent a na jiná témata nediskutuješ.
     """
 
+# 1. NAČTENÍ HISTORIE PŘI STARTU
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = [{"role": "system", "content": STRICT_SYSTEM_PROMPT}]
+        saved_history = load_chat_history(user_id) if user_id else None
+        if saved_history:
+            st.session_state.chat_history = saved_history
+        else:
+            st.session_state.chat_history = [{"role": "system", "content": STRICT_SYSTEM_PROMPT}]
 
     with st.popover("💬 Zeptat se AI asistenta", use_container_width=True):
         st.markdown("**Faktický AI Asistent**")
+        
+        # Tlačítko pro vymazání paměti chatu
+        if st.button("Vymazat historii chatu", use_container_width=True):
+            st.session_state.chat_history = [{"role": "system", "content": STRICT_SYSTEM_PROMPT}]
+            if user_id:
+                save_chat_history(user_id, st.session_state.chat_history)
+            st.rerun()
 
         for msg in st.session_state.chat_history:
             if msg["role"] != "system":
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Zeptej se na obecná fakta k nacenění..."):
+        if prompt := st.chat_input("Zeptej se na obchodní taktiky..."):
             st.session_state.chat_history.append({"role": "user", "content": prompt})
+            
+            # 2. ULOŽENÍ PO DOTAZU UŽIVATELE
+            if user_id:
+                save_chat_history(user_id, st.session_state.chat_history)
+                
             with st.chat_message("user"):
                 st.markdown(prompt)
 
@@ -49,11 +66,12 @@ def render_ai_assistant():
                     stream=True,
                 )
 
-                # Vytvoření generátoru, který z API dat vytáhne pouze samotný text
                 text_stream = (chunk.choices[0].delta.content for chunk in response_stream if
                                chunk.choices[0].delta.content is not None)
-
-                # Streamlit nyní vypíše jen čistý text
                 full_response = st.write_stream(text_stream)
 
             st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+            
+            # 3. ULOŽENÍ PO ODPOVĚDI MODELU
+            if user_id:
+                save_chat_history(user_id, st.session_state.chat_history)
