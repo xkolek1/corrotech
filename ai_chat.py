@@ -1,5 +1,6 @@
 import streamlit as st
 from groq import Groq
+from db_manager import load_chat_history, save_chat_history
 
 
 def render_ai_assistant():
