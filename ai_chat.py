@@ -6,6 +6,7 @@ from db_manager import load_chat_history, save_chat_history
 def render_ai_assistant():
     client = Groq(api_key=st.secrets["AI"]["GROQ_API_KEY"])
     MODEL_NAME = "qwen/qwen3.8-27b"
+    user_id = st.session_state.get("user_id")
 
     STRICT_SYSTEM_PROMPT = """Jsi expertní obchodní asistent aplikace CORROTECH CPQ. Tvou cílovou skupinou jsou dealeři a obchodníci s antikorozními nátěrovými hmotami. Tvým úkolem je radit s obchodním vyjednáváním, argumentací a pomáhat uživatelům orientovat se v tom, co tato aplikace dokáže. Nikdy uživatele nezatěžuj technickým IT pozadím.
 
