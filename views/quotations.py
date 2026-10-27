@@ -28,11 +28,12 @@ def render_quotations():
     st.subheader("Generátor PDF Kalkulace")
 
     template = st.session_state.get("loaded_template", {})
+    is_template_loaded = bool(template)
 
     with st.expander("Nastavení projektu a dokumentu", expanded=True):
         col_doc1, col_doc2 = st.columns(2)
 
-        # Možnosti dle ISO 12944 a Hempel brožur
+        # Možnosti dle ISO 12944 a Hempel
         corr_options = [
             "C1 - Velmi nízká", "C2 - Nízká", "C3 - Střední", "C4 - Vysoká",
             "C5 - Velmi vysoká", "CX - Extrémní", "Im1 - Sladká voda",
@@ -73,7 +74,7 @@ def render_quotations():
                 pdf_corr = sel_corr
 
             # Typ systému
-            sys_val = template.get("pdf_sys_type", "EP/PUR (Epoxid/Polyuretan)")
+            sys_val = template.get("pdf_sys_type", "EP/EP/PUR (Epoxid/Epoxid/Polyuretan)")
             sys_idx = safe_idx_select(sys_options, sys_val, len(sys_options) - 1 if sys_val not in sys_options else 0)
             sel_sys = st.selectbox("Typ nátěrového systému", sys_options, index=sys_idx)
             if sel_sys == "Vlastní zadání":
@@ -84,30 +85,69 @@ def render_quotations():
 
         with col_doc2:
             pdf_substrate = st.text_input("Podkladový materiál", value=template.get("pdf_substrate", "Uhlíková ocel"))
-            pdf_client = st.text_area("Poptávající / Aplikační firma (může být více řádků)",
+            pdf_client = st.text_area("Poptávající / Aplikační firma",
                                       value=template.get("pdf_client", selected_client if selected_client else ""))
             pdf_area = st.number_input("Celková plocha (m²)", min_value=0.1,
                                        value=float(template.get("pdf_area", 100.0)), step=10.0)
-            pdf_loss = st.number_input("Hlavní aplikační ztráta pro všechny nátěry (%)", min_value=0, max_value=100,
+            pdf_loss = st.number_input("Hlavní aplikační ztráta (%)", min_value=0, max_value=100,
                                        value=int(template.get("pdf_loss", 50)), step=5)
             pdf_validity = st.text_input("Platnost kalkulace do:", value=template.get("pdf_validity", "30 dní"))
 
         pdf_pozn = st.text_input("Poznámka (1. řádek tabulky)",
-                                 value=template.get("pdf_pozn", "Protipožární ochrana PLATE15*200"))
+                                 value=template.get("pdf_pozn", ""))
 
-        st.markdown("#### Příprava povrchu (výběr) - max 3/4 pro 5 nátěrových vrstev")
+        st.markdown("---")
 
-        def safe_idx(lst, val):
-            return lst.index(val) if val in lst else 0
+        # Validace nátěrového systému vs koroze
+        is_c5_cx = any(x in pdf_corr for x in ["C5", "CX"])
+        is_im = "Im" in pdf_corr
+        is_ak_ay = any(x in pdf_sys_type for x in ["AK", "AY", "Alkyd", "Akrylát"])
+        has_zink = "Zn" in pdf_sys_type or "Zink" in pdf_sys_type
+        is_c3_plus = any(x in pdf_corr for x in ["C3", "C4", "C5", "CX"]) or is_im
+
+        if (is_c5_cx or is_im) and is_ak_ay:
+            st.error(
+                f"⚠️ **Nedoporučeno:** {pdf_sys_type} není podle normy ISO 12944 standardně vhodný pro {pdf_corr}.")
+        elif has_zink and "C1" in pdf_corr:
+            st.warning(
+                f"ℹ️ **Naddimenzováno:** Zinkové základy jsou pro {pdf_corr} technologicky v pořádku, ale zbytečně silné.")
+        else:
+            st.success(f"✅ Kombinace prostředí a systému dává technologicky smysl.")
+
+        if has_zink:
+            st.info(
+                "💡 **Nutná příprava povrchu:** Zinkové základy (zinkepoxid/zinksilikát) vyžadují abrazivní otryskání (Sa 2.5 nebo Sa 3).")
+        elif is_c3_plus:
+            st.info(
+                "💡 **Doporučená příprava povrchu:** Pro C3 a vyšší (či ponor) norma standardně počítá s abrazivním otryskáním (Sa 2.5).")
+
+        st.markdown("#### Příprava povrchu (výběr)")
+
+        # Pokus o vyhledání Sa 2.5 v dostupných seznamech
+        def find_sa25_idx(options_list):
+            for idx, item in enumerate(options_list):
+                if "Sa 2" in item or "Sa2" in item:
+                    return idx
+            return 0
+
+        # Pokud není načtená šablona a systém si to žádá, přednastavíme Sa 2.5 v plošném tryskání (PREP_B)
+        default_b_idx = find_sa25_idx(PREP_B) if (not is_template_loaded and (has_zink or is_c3_plus)) else 0
+
+        def safe_idx(lst, val, fallback=0):
+            return lst.index(val) if val in lst else fallback
 
         prep_a = st.selectbox("A - Základní čištění (vyberte max. 1)", PREP_A,
                               index=safe_idx(PREP_A, template.get("prep_a", "")))
+
         prep_b = st.selectbox("B - Abrazivní tryskání plošné (vyberte max. 1)", PREP_B,
-                              index=safe_idx(PREP_B, template.get("prep_b", "")))
+                              index=safe_idx(PREP_B, template.get("prep_b", ""), fallback=default_b_idx))
+
         prep_c = st.selectbox("C - Tryskání se specifikací drsnosti (vyberte max. 1)", PREP_C,
                               index=safe_idx(PREP_C, template.get("prep_c", "")))
+
         prep_d = st.selectbox("D - Svary a lokální opravy (vyberte max. 1)", PREP_D,
                               index=safe_idx(PREP_D, template.get("prep_d", "")))
+
         prep_e = st.selectbox("E - Mechanické a speciální plošné (vyberte max. 1)", PREP_E,
                               index=safe_idx(PREP_E, template.get("prep_e", "")))
 
