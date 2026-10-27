@@ -22,7 +22,8 @@ from db_manager import (
 from helpers import show_pdf, sanitize_filename
 
 # View rendering functions
-from views.dashboard import render_dashboard
+from views.quotations import render_quotations
+from views.calculations import render_calculations
 from views.clients import render_clients
 from views.analytics import render_analytics
 from views.dealers import render_dealers
@@ -123,8 +124,7 @@ def login_form():
 
 def render_verify_page():
     st.title("Ověření pravosti kalkulace (PDF)")
-    st.write(
-        "Zadejte kód (Elektronickou stopu dokumentu / ID) z patičky PDF. Systém ověří pravost a otevře originální dokument.")
+    st.write("Zadejte kód (Elektronickou stopu dokumentu / ID) z patičky PDF. Systém ověří pravost a otevře originální dokument.")
 
     verify_code = st.text_input("Kód dokumentu (ID):", placeholder="např. 4F8A3B2E-...")
 
@@ -155,7 +155,6 @@ def render_verify_page():
                             st.write(f"**Datum vygenerování:** {result['created_at']}")
                             st.write(f"**Generoval:** {result['author_email']}")
                             st.write(f"**Poptávající firma:** {result['client_name']}")
-
                     else:
                         st.error("❌ Dokument s tímto kódem neexistuje.")
             except Exception as e:
@@ -197,12 +196,16 @@ st.sidebar.markdown("---")
 st.sidebar.markdown(f"**{st.session_state['user_name']}** ({st.session_state['user_role']})")
 
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "Dashboard"
+    st.session_state.current_page = "Tvorba nabídek"
 
 page = st.session_state.current_page
 
-if st.sidebar.button("Dashboard", icon=":material/dashboard:", use_container_width=True, type="primary" if page == "Dashboard" else "secondary"):
-    st.session_state.current_page = "Dashboard"
+if st.sidebar.button("Tvorba nabídek", icon=":material/description:", use_container_width=True, type="primary" if page == "Tvorba nabídek" else "secondary"):
+    st.session_state.current_page = "Tvorba nabídek"
+    st.rerun()
+
+if st.sidebar.button("Výpočty a ceníky", icon=":material/calculate:", use_container_width=True, type="primary" if page == "Výpočty a ceníky" else "secondary"):
+    st.session_state.current_page = "Výpočty a ceníky"
     st.rerun()
 
 if st.sidebar.button("Odběratelé", icon=":material/groups:", use_container_width=True, type="primary" if page == "Odběratelé" else "secondary"):
@@ -239,11 +242,9 @@ if st.sidebar.button("Odhlásit se", icon=":material/logout:", use_container_wid
         clear_session_token(st.session_state["user_id"])
 
     st.session_state["delete_cookie"] = True
-
     for key in list(st.session_state.keys()):
         if key != "delete_cookie":
             del st.session_state[key]
-
     time.sleep(0.1)
     st.rerun()
 
@@ -256,23 +257,19 @@ page = st.session_state.current_page
 # Main app routing
 # =============================================================================
 
-if page == "Dashboard":
-    render_dashboard()
-
+if page == "Tvorba nabídek":
+    render_quotations()
+elif page == "Výpočty a ceníky":
+    render_calculations()
 elif page == "Odběratelé":
     render_clients()
-
 elif page == "Analýza a Predikce":
     render_analytics()
-
 elif page == "Porovnání dealerů":
     render_dealers()
-
 elif page == "Archiv nabídek":
     render_archive()
-
 elif page == "Můj profil":
     render_profile()
-
 elif page == "Správa systému (Admin)":
     render_admin()

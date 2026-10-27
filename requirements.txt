@@ -5,6 +5,7 @@ bcrypt
 pandas
 plotly
 fpdf2
+reportlab
 openpyxl
 numpy
 groq
