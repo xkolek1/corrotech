@@ -105,6 +105,8 @@ def render_quotations():
         has_zink = "Zn" in pdf_sys_type or "Zink" in pdf_sys_type
         is_c3_plus = any(x in pdf_corr for x in ["C3", "C4", "C5", "CX"]) or is_im
 
+
+        st.info("zatím nic moc nehlídá (zatím chybí notičky 🤓)")
         if (is_c5_cx or is_im) and is_ak_ay:
             st.error(
                 f"⚠️ **Nedoporučeno:** {pdf_sys_type} není podle normy ISO 12944 standardně vhodný pro {pdf_corr}.")
