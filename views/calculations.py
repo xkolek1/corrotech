@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from db_manager import load_products
 from helpers import show_pdf
-from hempel_pdf_generator import get_hempel_pdfs
+from generate_hempel_pdf import get_hempel_pdfs
 
 
 def render_calculations():

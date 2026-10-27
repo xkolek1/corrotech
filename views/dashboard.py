@@ -7,7 +7,7 @@ import os
 import json
 import psycopg2
 from uuid import uuid4
-from hempel_pdf_generator import get_hempel_pdfs
+from generate_hempel_pdf import get_hempel_pdfs
 
 from db_manager import (
     load_clients, load_products, load_client_invoices, load_pdf_hmoty,
