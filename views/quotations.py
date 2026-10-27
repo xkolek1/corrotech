@@ -41,8 +41,15 @@ def render_quotations():
         ]
 
         sys_options = [
-            "EP (Epoxid)", "EP/PUR (Epoxid/Polyuretan)", "Zn(R)/EP/PUR (Zinkepoxid/Epoxid/Polyuretan)",
-            "AK (Alkyd)", "AY (Akrylát)", "ESI/EP/PUR (Zinksilikát/Epoxid/Polyuretan)", "PUR (Polyuretan)",
+            "EP (Epoxid)",
+            "EP/EP (Epoxid/Epoxid)",
+            "EP/PUR (Epoxid/Polyuretan)",
+            "EP/EP/PUR (Epoxid/Epoxid/Polyuretan)",
+            "Zn(R)/EP/PUR (Zinkepoxid/Epoxid/Polyuretan)",
+            "AK (Alkyd)",
+            "AY (Akrylát)",
+            "ESI/EP/PUR (Zinksilikát/Epoxid/Polyuretan)",
+            "PUR (Polyuretan)",
             "Vlastní zadání"
         ]
 
