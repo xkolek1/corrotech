@@ -69,6 +69,16 @@ def render_quotations():
         default_f = [x for x in template.get("prep_f", []) if x in PREP_F]
         prep_f = st.multiselect("F - Dodatečné pokyny (můžete vybrat více)", PREP_F, default=default_f)
 
+    st.markdown("#### Příplatky")
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        fuel_surcharge_active = st.checkbox("Aktivovat palivový příplatek",
+                                            value=template.get("fuel_surcharge_active", True))
+    with col_s2:
+        fuel_surcharge_pct = st.number_input("Výše palivového příplatku (%)", min_value=0.0, max_value=100.0,
+                                             value=float(template.get("fuel_surcharge_pct", 5.0)), step=1.0,
+                                             disabled=not fuel_surcharge_active)
+
     st.markdown("#### Nátěrové vrstvy")
 
     df_hmoty = load_pdf_hmoty()
@@ -151,6 +161,8 @@ def render_quotations():
             "prep_d": prep_d,
             "prep_e": prep_e,
             "prep_f": prep_f,
+            "fuel_surcharge_active": fuel_surcharge_active,
+            "fuel_surcharge_pct": fuel_surcharge_pct,
             "pdf_rows": st.session_state.pdf_rows
         }
         form_data_json = json.dumps(form_data_payload)
@@ -187,12 +199,15 @@ def render_quotations():
             })
             products_data.append({"hmota": db_redidlo, "redeni": row['redeni']})
 
+        final_fuel_pct = fuel_surcharge_pct if fuel_surcharge_active else 0.0
+
         pdf = KalkulacePDF(user_info=user_info, validity_date=pdf_validity, signature_id=doc_signature, orientation="L",
                            unit="mm", format="A4")
         pdf.add_page()
         pdf.draw_template_grid(header_info)
+
         pdf.draw_table(products_data, main_loss=int(pdf_loss), celkova_plocha=pdf_area, sys_type=pdf_sys_type,
-                       pozn=pdf_pozn)
+                       pozn=pdf_pozn, fuel_pct=final_fuel_pct)
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
         tmp_name = tmp.name

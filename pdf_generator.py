@@ -158,7 +158,7 @@ class KalkulacePDF(FPDF):
 
         self.set_left_margin(orig_l_margin)
 
-    def draw_table(self, products_data, main_loss=50, celkova_plocha=1.0, sys_type="", pozn=""):
+    def draw_table(self, products_data, main_loss=50, celkova_plocha=1.0, sys_type="", pozn="", fuel_pct=0.0):
         """Vykreslí tabulku s vrstevnicemi nátěrových hmot a souvisejícími výpočty."""
         self.main_loss = main_loss
         self.set_y(self.get_y() + 4)
@@ -418,6 +418,14 @@ class KalkulacePDF(FPDF):
 
         self.sum_teor_cena_m2 = sum_teor_cena_m2
         self.sum_teor_cena = sum_teor_cena
+
+        if fuel_pct > 0:
+            self.ln(2)
+            self.set_font("Arial", "B", 7)
+            self.set_text_color(0, 0, 0)
+            self.cell(0, 5,
+                      f"* Zvýšení ceny o {self.format_val(fuel_pct)} % (palivový příplatek) není započteno do celkové kalkulace.",
+                      border=0, align="L")
 
     def footer(self):
         """Vykreslí patičku s upozorněním, kontakty a podpisovým kódem."""
