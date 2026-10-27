@@ -424,7 +424,7 @@ class KalkulacePDF(FPDF):
             self.set_font("Arial", "B", 7)
             self.set_text_color(0, 0, 0)
             self.cell(0, 5,
-                      f"* Zvýšení ceny o {self.format_val(fuel_pct)} % (palivový příplatek) není započteno do celkové kalkulace.",
+                      f"* Palivový příplatek ({self.format_val(fuel_pct)} %) není započten do celkové kalkulace.",
                       border=0, align="L")
 
     def footer(self):

@@ -31,12 +31,49 @@ def render_quotations():
 
     with st.expander("Nastavení projektu a dokumentu", expanded=True):
         col_doc1, col_doc2 = st.columns(2)
+
+        # Možnosti dle ISO 12944 a Hempel brožur
+        corr_options = [
+            "C1 - Velmi nízká", "C2 - Nízká", "C3 - Střední", "C4 - Vysoká",
+            "C5 - Velmi vysoká", "CX - Extrémní", "Im1 - Sladká voda",
+            "Im2 - Mořská/poloslaná voda", "Im3 - Půda", "Im4 - Mořská s katodickou ochranou",
+            "Vlastní zadání"
+        ]
+
+        sys_options = [
+            "EP (Epoxid)", "EP/PUR (Epoxid/Polyuretan)", "Zn(R)/EP/PUR (Zinkepoxid/Epoxid/Polyuretan)",
+            "AK (Alkyd)", "AY (Akrylát)", "ESI/EP/PUR (Zinksilikát/Epoxid/Polyuretan)", "PUR (Polyuretan)",
+            "Vlastní zadání"
+        ]
+
+        def safe_idx_select(lst, val, fallback_idx=0):
+            return lst.index(val) if val in lst else fallback_idx
+
         with col_doc1:
             st.text_input("Dokument č.", value="Vygenerováno automaticky (po kliknutí)", disabled=True)
             pdf_project = st.text_input("Projekt", value=template.get("pdf_project", ""))
             pdf_temp = st.text_input("Provozní teplota", value=template.get("pdf_temp", "Do 120 °C"))
-            pdf_corr = st.text_input("Korozní zatížení", value=template.get("pdf_corr", "C4-High"))
-            pdf_sys_type = st.text_input("Typ nátěrového systému", value=template.get("pdf_sys_type", "EP/EP/PUR"))
+
+            # Korozní zatížení
+            corr_val = template.get("pdf_corr", "C4 - Vysoká")
+            corr_idx = safe_idx_select(corr_options, corr_val,
+                                       len(corr_options) - 1 if corr_val not in corr_options else 0)
+            sel_corr = st.selectbox("Korozní zatížení (ISO 12944)", corr_options, index=corr_idx)
+            if sel_corr == "Vlastní zadání":
+                pdf_corr = st.text_input("Zadejte vlastní korozní zatížení",
+                                         value=corr_val if corr_val not in corr_options else "")
+            else:
+                pdf_corr = sel_corr
+
+            # Typ systému
+            sys_val = template.get("pdf_sys_type", "EP/PUR (Epoxid/Polyuretan)")
+            sys_idx = safe_idx_select(sys_options, sys_val, len(sys_options) - 1 if sys_val not in sys_options else 0)
+            sel_sys = st.selectbox("Typ nátěrového systému", sys_options, index=sys_idx)
+            if sel_sys == "Vlastní zadání":
+                pdf_sys_type = st.text_input("Zadejte vlastní typ systému",
+                                             value=sys_val if sys_val not in sys_options else "")
+            else:
+                pdf_sys_type = sel_sys
 
         with col_doc2:
             pdf_substrate = st.text_input("Podkladový materiál", value=template.get("pdf_substrate", "Uhlíková ocel"))
@@ -53,7 +90,8 @@ def render_quotations():
 
         st.markdown("#### Příprava povrchu (výběr) - max 3/4 pro 5 nátěrových vrstev")
 
-        def safe_idx(lst, val): return lst.index(val) if val in lst else 0
+        def safe_idx(lst, val):
+            return lst.index(val) if val in lst else 0
 
         prep_a = st.selectbox("A - Základní čištění (vyberte max. 1)", PREP_A,
                               index=safe_idx(PREP_A, template.get("prep_a", "")))
@@ -86,49 +124,89 @@ def render_quotations():
     if 'pdf_rows' not in st.session_state:
         st.session_state.pdf_rows = template.get("pdf_rows", [])
 
-    types_of_coats = ["Penetrační", "Mlhový nástřik", "Napouštěcí", "Základní", "Podkladní", "Vrchní"]
+    types_of_coats = [
+        "Základní (Primer)", "Mezinátěr (Intermediate)", "Vrchní (Topcoat)",
+        "Jednovrstvý (DTM)", "Kotevní (Sealer)", "Protipožární",
+        "Penetrační / Mlhový", "Antifouling", "Jiné"
+    ]
     hmoty_options = df_hmoty['nazev'].tolist() if not df_hmoty.empty else ["Žádná data v DB"]
 
     for i, row in enumerate(st.session_state.pdf_rows):
         st.markdown(f"**Vrstva {i + 1}**")
-        row_c1, row_c2, row_c3, row_c4 = st.columns(4)
-        row_c5, row_c6, row_c7 = st.columns([1, 1, 2])
 
-        safe_coat_index = int(types_of_coats.index(row['typ'])) if row['typ'] in types_of_coats else 0
-        safe_hmota_index = int(hmoty_options.index(row['hmota'])) if row['hmota'] in hmoty_options else 0
+        row_c1, row_c2, row_c3 = st.columns(3)
+        row_c4, row_c5, row_c6, row_c7 = st.columns(4)
+
+        safe_coat_index = types_of_coats.index(row['typ']) if row['typ'] in types_of_coats else 0
+        safe_hmota_index = hmoty_options.index(row['hmota']) if row['hmota'] in hmoty_options else 0
 
         with row_c1:
-            st.session_state.pdf_rows[i]['typ'] = st.selectbox(f"Typ nátěru##{i}", types_of_coats,
-                                                               index=safe_coat_index)
+            st.session_state.pdf_rows[i]['typ'] = st.selectbox(
+                "Typ nátěru",
+                options=types_of_coats,
+                index=safe_coat_index,
+                key=f"coat_typ_{i}"
+            )
         with row_c2:
-            st.session_state.pdf_rows[i]['hmota'] = st.selectbox(f"Nátěrová hmota##{i}", hmoty_options,
-                                                                 index=safe_hmota_index)
+            st.session_state.pdf_rows[i]['hmota'] = st.selectbox(
+                "Nátěrová hmota",
+                options=hmoty_options,
+                index=safe_hmota_index,
+                key=f"hmota_{i}"
+            )
         with row_c3:
-            st.session_state.pdf_rows[i]['odstin'] = st.text_input(f"Odstín##{i}", value=row['odstin'])
-        with row_c4:
-            st.session_state.pdf_rows[i]['dft'] = st.number_input(f"Tloušťka (DFT)##{i}", min_value=0.0,
-                                                                  value=float(row['dft']), step=10.0)
+            st.session_state.pdf_rows[i]['odstin'] = st.text_input(
+                "Odstín",
+                value=row['odstin'],
+                key=f"odstin_{i}"
+            )
 
+        with row_c4:
+            st.session_state.pdf_rows[i]['dft'] = st.number_input(
+                "Tloušťka (DFT) [µm]",
+                min_value=0.0,
+                value=float(row['dft']),
+                step=10.0,
+                key=f"dft_{i}"
+            )
         with row_c5:
-            st.session_state.pdf_rows[i]['plocha'] = st.number_input(f"% z celk. plochy##{i}", min_value=0.0,
-                                                                     max_value=100.0, value=float(row['plocha']))
+            st.session_state.pdf_rows[i]['plocha'] = st.number_input(
+                "% z celk. plochy",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(row['plocha']),
+                step=5.0,
+                key=f"plocha_{i}"
+            )
         with row_c6:
-            st.session_state.pdf_rows[i]['c_l'] = st.number_input(f"Cena za litr (Kč)##{i}", min_value=0.0,
-                                                                  value=float(row['c_l']))
+            st.session_state.pdf_rows[i]['c_l'] = st.number_input(
+                "Cena za litr (Kč)",
+                min_value=0.0,
+                value=float(row['c_l']),
+                step=10.0,
+                key=f"c_l_{i}"
+            )
         with row_c7:
-            st.session_state.pdf_rows[i]['redeni'] = st.number_input(f"Ředění (%)##{i}", min_value=0.0, max_value=100.0,
-                                                                     value=float(row['redeni']))
+            st.session_state.pdf_rows[i]['redeni'] = st.number_input(
+                "Ředění (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(row['redeni']),
+                step=1.0,
+                key=f"redeni_{i}"
+            )
 
         if st.button(f"Odebrat vrstvu {i + 1}", key=f"remove_{i}"):
             st.session_state.pdf_rows.pop(i)
             st.rerun()
-        st.markdown("---")
+
+        st.divider()
 
     col_btn_add, col_btn_clear = st.columns([1, 5])
     with col_btn_add:
         if st.button("Přidat vrstvu", icon=":material/add:"):
             st.session_state.pdf_rows.append({
-                'typ': 'Základní', 'hmota': hmoty_options[0] if hmoty_options else "",
+                'typ': 'Základní (Primer)', 'hmota': hmoty_options[0] if hmoty_options else "",
                 'odstin': '', 'dft': 100.0, 'plocha': 100.0, 'c_l': 0.0, 'redeni': 5.0
             })
             st.rerun()
