@@ -98,63 +98,102 @@ def render_quotations():
 
         st.markdown("---")
 
-        # Validace nátěrového systému vs koroze
-        is_c5_cx = any(x in pdf_corr for x in ["C5", "CX"])
-        is_im = "Im" in pdf_corr
-        is_ak_ay = any(x in pdf_sys_type for x in ["AK", "AY", "Alkyd", "Akrylát"])
-        has_zink = "Zn" in pdf_sys_type or "Zink" in pdf_sys_type
-        is_c3_plus = any(x in pdf_corr for x in ["C3", "C4", "C5", "CX"]) or is_im
+        # Striktní validace nátěrového systému vs koroze podle podkladů Hempel (ISO 12944)
+        corr_upper = pdf_corr.upper()
+        sys_upper = pdf_sys_type.upper()
+        sub_lower = pdf_substrate.lower()
 
+        is_c1_c2 = "C1" in corr_upper or "C2" in corr_upper
+        is_c5 = "C5" in corr_upper
+        is_cx = "CX" in corr_upper
+        is_im = "IM" in corr_upper
+        is_c3_plus = any(x in corr_upper for x in ["C3", "C4", "C5", "CX"]) or is_im
+        is_galvanized = "zink" in sub_lower or "pozink" in sub_lower
 
+        has_zink = "ZN" in sys_upper or "ESI" in sys_upper
+        is_ak_ay = "AK" in sys_upper or "AY" in sys_upper or "ALKYD" in sys_upper or "AKRYLÁT" in sys_upper
+        is_pure_ep = sys_upper.strip() in ["EP (EPOXID)", "EP/EP (EPOXID/EPOXID)"]
+        is_custom = "VLASTNÍ ZADÁNÍ" in sys_upper
+
+        is_valid = True
+        warning_msg = ""
+        info_msg = ""
         st.info("zatím nic moc nehlídá (zatím chybí notičky 🤓)")
-        if (is_c5_cx or is_im) and is_ak_ay:
-            st.error(
-                f"⚠️ **Nedoporučeno:** {pdf_sys_type} není podle normy ISO 12944 standardně vhodný pro {pdf_corr}.")
-        elif has_zink and "C1" in pdf_corr:
-            st.warning(
-                f"ℹ️ **Naddimenzováno:** Zinkové základy jsou pro {pdf_corr} technologicky v pořádku, ale zbytečně silné.")
-        else:
-            st.success(f"✅ Kombinace prostředí a systému dává technologicky smysl.")
+        if not is_custom:
+            if is_im:
+                if not is_pure_ep:
+                    is_valid = False
+                    warning_msg = "Pro prostředí ponoru (Im1-Im4) brožura Hempel uvádí pouze čistě epoxidové systémy (EP nebo EP/EP)."
+            elif is_cx:
+                if not has_zink:
+                    is_valid = False
+                    warning_msg = "Pro extrémní prostředí (CX) materiály Hempel vyžadují zinkem bohatý základ (Zn(R) nebo ESI)."
+            elif is_c5:
+                if is_ak_ay:
+                    is_valid = False
+                    warning_msg = "Pro prostředí C5 normy neuvádí alkydové (AK) ani akrylátové (AY) systémy jako vhodné."
+            elif is_c1_c2:
+                if has_zink:
+                    warning_msg = "Zinkové základy jsou pro C1/C2 v pořádku, ale zbytečně silné (naddimenzované)."
 
+        if is_custom:
+            st.info("Vlastní zadání – nelze provést automatickou kontrolu s ISO 12944.")
+        elif not is_valid:
+            st.error(f"⚠️ **Není doporučeno (ISO 12944):** {warning_msg}")
+        elif warning_msg:
+            st.warning(f"ℹ️ **Upozornění:** {warning_msg}")
+        else:
+            st.success(
+                "✅ Kombinace korozního prostředí a typu systému přesně odpovídá specifikacím Hempel (ISO 12944).")
+
+        # Příprava povrchu logiky
         if has_zink:
-            st.info(
-                "💡 **Nutná příprava povrchu:** Zinkové základy (zinkepoxid/zinksilikát) vyžadují abrazivní otryskání (Sa 2.5 nebo Sa 3).")
+            info_msg = "💡 **Nutná příprava povrchu:** Zinkové základy (zinkepoxid/zinksilikát) pro správnou funkci vyžadují abrazivní otryskání (Sa 2.5 nebo Sa 3)."
         elif is_c3_plus:
-            st.info(
-                "💡 **Doporučená příprava povrchu:** Pro C3 a vyšší (či ponor) norma standardně počítá s abrazivním otryskáním (Sa 2.5).")
+            info_msg = "💡 **Doporučená příprava povrchu:** Tabulky nátěrových systémů od C3 výše (vč. ponoru) standardně předpokládají aplikaci na otryskaný podklad (Sa 2.5)."
+
+        if info_msg:
+            st.info(info_msg)
 
         st.markdown("#### Příprava povrchu (výběr)")
 
-        # Pokus o vyhledání Sa 2.5 v dostupných seznamech
-        def find_sa25_idx(options_list):
-            for idx, item in enumerate(options_list):
-                if "Sa 2" in item or "Sa2" in item:
+        # Pokročilý automatický předvýběr logiky přípravy povrchu (robustní vůči úpravě stringů)
+        def find_idx(lst, partial_string, default_idx=0):
+            for idx, item in enumerate(lst):
+                if partial_string in item:
                     return idx
-            return 0
+            return default_idx
 
-        # Pokud není načtená šablona a systém si to žádá, přednastavíme Sa 2.5 v plošném tryskání (PREP_B)
-        default_b_idx = find_sa25_idx(PREP_B) if (not is_template_loaded and (has_zink or is_c3_plus)) else 0
+        if not is_template_loaded:
+            default_a_idx = find_idx(PREP_A, "vysokotlakou čistou vodou", 0)  # Základní odmaštění a omytí
+            default_b_idx = find_idx(PREP_B, "Sa 2 1/2", 0) if (
+                        has_zink or is_c3_plus) else 0  # Otryskání pro C3+ nebo Zinek
+            default_c_idx = 0
+            default_d_idx = find_idx(PREP_D, "mechanicky očistěte na St3", 0)  # Univerzální postup pro svary a opravy
+            default_e_idx = find_idx(PREP_E, "lehké abrazivní ometení", 0) if is_galvanized else 0
 
-        def safe_idx(lst, val, fallback=0):
-            return lst.index(val) if val in lst else fallback
+            base_f = []
+            if is_galvanized:
+                # Najdi dodatečný pokyn o bílé rzi
+                for item in PREP_F:
+                    if "bílá rez" in item or "bílou rez" in item:
+                        base_f.append(item)
+            default_f_vals = base_f
+        else:
+            default_a_idx = safe_idx_select(PREP_A, template.get("prep_a", ""))
+            default_b_idx = safe_idx_select(PREP_B, template.get("prep_b", ""))
+            default_c_idx = safe_idx_select(PREP_C, template.get("prep_c", ""))
+            default_d_idx = safe_idx_select(PREP_D, template.get("prep_d", ""))
+            default_e_idx = safe_idx_select(PREP_E, template.get("prep_e", ""))
+            default_f_vals = [x for x in template.get("prep_f", []) if x in PREP_F]
 
-        prep_a = st.selectbox("A - Základní čištění (vyberte max. 1)", PREP_A,
-                              index=safe_idx(PREP_A, template.get("prep_a", "")))
+        prep_a = st.selectbox("A - Základní čištění (vyberte max. 1)", PREP_A, index=default_a_idx)
+        prep_b = st.selectbox("B - Abrazivní tryskání plošné (vyberte max. 1)", PREP_B, index=default_b_idx)
+        prep_c = st.selectbox("C - Tryskání se specifikací drsnosti (vyberte max. 1)", PREP_C, index=default_c_idx)
+        prep_d = st.selectbox("D - Svary a lokální opravy (vyberte max. 1)", PREP_D, index=default_d_idx)
+        prep_e = st.selectbox("E - Mechanické a speciální plošné (vyberte max. 1)", PREP_E, index=default_e_idx)
 
-        prep_b = st.selectbox("B - Abrazivní tryskání plošné (vyberte max. 1)", PREP_B,
-                              index=safe_idx(PREP_B, template.get("prep_b", ""), fallback=default_b_idx))
-
-        prep_c = st.selectbox("C - Tryskání se specifikací drsnosti (vyberte max. 1)", PREP_C,
-                              index=safe_idx(PREP_C, template.get("prep_c", "")))
-
-        prep_d = st.selectbox("D - Svary a lokální opravy (vyberte max. 1)", PREP_D,
-                              index=safe_idx(PREP_D, template.get("prep_d", "")))
-
-        prep_e = st.selectbox("E - Mechanické a speciální plošné (vyberte max. 1)", PREP_E,
-                              index=safe_idx(PREP_E, template.get("prep_e", "")))
-
-        default_f = [x for x in template.get("prep_f", []) if x in PREP_F]
-        prep_f = st.multiselect("F - Dodatečné pokyny (můžete vybrat více)", PREP_F, default=default_f)
+        prep_f = st.multiselect("F - Dodatečné pokyny (můžete vybrat více)", PREP_F, default=default_f_vals)
 
     st.markdown("#### Příplatky")
     col_s1, col_s2 = st.columns(2)
