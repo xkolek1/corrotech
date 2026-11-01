@@ -70,9 +70,8 @@ PREP_F = [
 
 # ---------------------------------------------
 
-# --- POMOCNÉ FUNKCE PRO CHYTRÝ FILTR BAREV ---
+# --- POMOCNÉ FUNKCE PRO AUTOMATIZACI ---
 def assign_chem_base(nazev):
-    """Z existujícího názvu barvy odvodí chemickou bázi."""
     n = str(nazev).upper()
     if "AVANTGUARD" in n or "ZINC" in n or "ZINK" in n: return "Zinkepoxid"
     if "GALVOSIL" in n: return "Zinksilikát"
@@ -86,7 +85,6 @@ def assign_chem_base(nazev):
 
 
 def get_expected_base(sys_type, layer_index, total_layers):
-    """Určí, jakou chemickou bázi by měla mít aktuální vrstva podle Hempel ISO systémů."""
     if "Vlastní" in sys_type: return None
     prefix = sys_type.split(" (")[0].strip()
 
@@ -126,6 +124,61 @@ def get_expected_base(sys_type, layer_index, total_layers):
         return bases[1] if len(bases) >= 3 else bases[0]
 
 
+def get_recommended_system(sys_type, corr):
+    sys_upper = sys_type.upper()
+    is_im = "IM" in corr.upper()
+
+    def make_layer(typ, hmota, dft):
+        return {'typ': typ, 'hmota': hmota, 'odstin': '', 'dft': dft, 'plocha': 100.0, 'c_l': 0.0, 'redeni': 5.0}
+
+    if is_im:
+        return [
+            make_layer("Základní (Primer)", "HEMPADUR MULTI-STRENGHT 45703", 175.0),
+            make_layer("Vrchní (Topcoat)", "HEMPADUR MULTI-STRENGHT 45703", 175.0)
+        ]
+    if "ZN(R)/EP/PUR" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPADUR AvantGuard 750", 60.0),
+            make_layer("Mezinátěr (Intermediate)", "HEMPAPRIME MULTI 500 45950", 120.0),
+            make_layer("Vrchní (Topcoat)", "HEMPATHANE FAST DRY 55750", 60.0)
+        ]
+    elif "EP/EP/PUR" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPAPRIME MULTI 500 45950", 120.0),
+            make_layer("Mezinátěr (Intermediate)", "HEMPAPRIME MULTI 500 45950", 120.0),
+            make_layer("Vrchní (Topcoat)", "HEMPATHANE FAST DRY 55750", 60.0)
+        ]
+    elif "EP/PUR" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPADUR SPEED-DRY ZP 500", 120.0),
+            make_layer("Vrchní (Topcoat)", "HEMPATHANE SPEED-DRY TOPCOAT 250", 60.0)
+        ]
+    elif "PUR DTM" in sys_upper:
+        return [
+            make_layer("Jednovrstvý (DTM)", "HEMPATHANE SPEED-DRY TOPCOAT 250", 120.0)
+        ]
+    elif "AK " in sys_upper or "ALKYD" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPEL'S SPEED-DRY ALKYD 43140", 80.0),
+            make_layer("Vrchní (Topcoat)", "HEMPEL'S SPEED-DRY ALKYD 43140", 80.0)
+        ]
+    elif "AY " in sys_upper or "AKRYLÁT" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMUCRYL 48120", 100.0),
+            make_layer("Vrchní (Topcoat)", "HEMUCRYL 48120", 100.0)
+        ]
+    elif "EP/EP" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPAPRIME MULTI 500 45950", 120.0),
+            make_layer("Vrchní (Topcoat)", "HEMPAPRIME MULTI 500 45950", 120.0)
+        ]
+    elif "EP " in sys_upper or "EPOXID" in sys_upper:
+        return [
+            make_layer("Základní (Primer)", "HEMPAPRIME MULTI 500 45950", 120.0)
+        ]
+    return [make_layer("Základní (Primer)", "", 100.0)]
+
+
 # ---------------------------------------------
 
 def render_quotations():
@@ -146,6 +199,11 @@ def render_quotations():
 
     template = st.session_state.get("loaded_template", {})
     is_template_loaded = bool(template)
+
+    if 'prev_sys_type' not in st.session_state:
+        st.session_state.prev_sys_type = None
+    if 'prev_corr' not in st.session_state:
+        st.session_state.prev_corr = None
 
     with st.expander("Nastavení projektu a dokumentu", expanded=True):
         col_doc1, col_doc2 = st.columns(2)
@@ -233,7 +291,17 @@ def render_quotations():
         pdf_pozn = st.text_input("Poznámka (1. řádek tabulky)", value=template.get("pdf_pozn", ""))
         st.markdown("---")
 
-        # Striktní validace
+        # --- REAKTIVNÍ AUTOMATICKÉ VYPLŇOVÁNÍ BAREV ---
+        if not is_template_loaded:
+            if st.session_state.prev_sys_type != pdf_sys_type or st.session_state.prev_corr != pdf_corr:
+                st.session_state.pdf_rows = get_recommended_system(pdf_sys_type, pdf_corr)
+                st.session_state.prev_sys_type = pdf_sys_type
+                st.session_state.prev_corr = pdf_corr
+        else:
+            st.session_state.prev_sys_type = pdf_sys_type
+            st.session_state.prev_corr = pdf_corr
+
+        # Striktní validace ISO
         corr_upper = pdf_corr.upper()
         sys_upper = pdf_sys_type.upper()
         sub_lower = pdf_substrate.lower()
@@ -374,7 +442,6 @@ def render_quotations():
 
     st.markdown("#### Nátěrové vrstvy")
 
-    # Chytrý filtr vrstev
     smart_filter = st.checkbox("Filtrovat dostupné barvy podle specifikací Hempel (Doporučeno)", value=True)
 
     df_hmoty = load_pdf_hmoty()
@@ -395,10 +462,9 @@ def render_quotations():
         total_layers = len(st.session_state.pdf_rows)
         expected_base = get_expected_base(pdf_sys_type, i, total_layers)
 
-        # Aplikace filtru na barvy
         if smart_filter and expected_base:
             hmoty_options = [h for h in all_hmoty if assign_chem_base(h) == expected_base]
-            if not hmoty_options:  # Fallback pokud by filtr vyřadil úplně všechno
+            if not hmoty_options:
                 hmoty_options = all_hmoty
         else:
             hmoty_options = all_hmoty
@@ -406,7 +472,6 @@ def render_quotations():
         row_c1, row_c2, row_c3 = st.columns(3)
         row_c4, row_c5, row_c6, row_c7 = st.columns(4)
 
-        # Odhad typu nátěru podle pořadí vrstvy
         if total_layers == 1:
             auto_coat = "Jednovrstvý (DTM)" if expected_base == "Polyuretan" else "Základní (Primer)"
         elif i == 0:
@@ -419,8 +484,9 @@ def render_quotations():
         current_coat = row['typ'] if row['typ'] in types_of_coats else auto_coat
         safe_coat_index = types_of_coats.index(current_coat)
 
-        # Bezpečný výběr hmoty
-        safe_hmota_index = hmoty_options.index(row['hmota']) if row['hmota'] in hmoty_options else 0
+        # Pokaždé zkontrolujeme, zda barva v databázi existuje, jinak doplníme čisté pole
+        current_hmota = row['hmota']
+        safe_hmota_index = hmoty_options.index(current_hmota) if current_hmota in hmoty_options else 0
 
         with row_c1:
             st.session_state.pdf_rows[i]['typ'] = st.selectbox(
