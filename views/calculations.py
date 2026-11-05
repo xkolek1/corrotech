@@ -33,14 +33,16 @@ def parse_hempel_code(product_id):
 
 @st.cache_data(ttl=300)
 def load_invoices_data():
-    """Načte data faktur z DB (prozatím z CSV)."""
+    """Načte data faktur z DB."""
     try:
-        # V produkci nahradíš za: pd.read_sql_query("SELECT ... FROM invoices", get_db_connection())
-        df = pd.read_csv('results-2026-11-05T10-14-12.csv')
-        df['purchase_date'] = pd.to_datetime(df['purchase_date'])
+        db_conn = get_db_connection()
+        query = "SELECT client_ic, product_id, purchase_date, quantity, price FROM invoices"
+        df = pd.read_sql_query(query, db_conn)
+        if not df.empty:
+            df['purchase_date'] = pd.to_datetime(df['purchase_date'])
         return df
     except Exception as e:
-        st.error(f"Nepodařilo se načíst faktury: {e}")
+        st.error(f"Nepodařilo se načíst faktury z databáze: {e}")
         return pd.DataFrame()
 
 
@@ -52,7 +54,7 @@ def render_calculations():
     df_clients = load_clients()
     df_inv = load_invoices_data()
 
-    # Předzpracování faktur
+    # Předzpracování faktur s pojistkou proti prázdné databázi
     if not df_inv.empty:
         df_inv[['base_code', 'shade_name']] = df_inv.apply(
             lambda row: pd.Series(parse_hempel_code(row['product_id'])), axis=1
@@ -62,6 +64,11 @@ def render_calculations():
             df_inv['client_name'] = df_inv['name'].fillna(df_inv['client_ic'].astype(str))
         else:
             df_inv['client_name'] = df_inv['client_ic'].astype(str)
+    else:
+        # Vytvoření prázdné struktury, aby UI nespadlo na KeyError
+        df_inv = pd.DataFrame(
+            columns=['client_ic', 'product_id', 'purchase_date', 'quantity', 'price', 'base_code', 'shade_name',
+                     'client_name'])
 
     st.subheader("Cenový analytik")
     st.markdown("Historické ceny z faktur očištěné o náklady na tónování.")
@@ -69,15 +76,22 @@ def render_calculations():
     # --- FILTRY ---
     c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
     with c1:
-        client_list = ["Všichni klienti"] + sorted(df_inv['client_name'].dropna().unique().tolist())
+        client_list = ["Všichni klienti"] + sorted(
+            df_inv['client_name'].dropna().unique().tolist()) if not df_inv.empty else ["Všichni klienti"]
         selected_client = st.selectbox("1. Výběr klienta:", client_list)
     with c2:
-        prod_list = sorted(
-            df_inv[~df_inv['base_code'].str.startswith(('08', '95', '97', '98'))]['base_code'].unique().tolist())
+        if not df_inv.empty:
+            prod_list = sorted(
+                df_inv[~df_inv['base_code'].str.startswith(('08', '95', '97', '98'))]['base_code'].unique().tolist())
+        else:
+            prod_list = ["Žádná data"]
         selected_product = st.selectbox("2. Produkt (Základ):", prod_list)
     with c3:
-        shade_opts = ["Všechny odstíny (Čistý základ)"] + sorted(
-            df_inv[df_inv['base_code'] == selected_product]['shade_name'].unique().tolist())
+        if not df_inv.empty and selected_product != "Žádná data":
+            shade_opts = ["Všechny odstíny (Čistý základ)"] + sorted(
+                df_inv[df_inv['base_code'] == selected_product]['shade_name'].unique().tolist())
+        else:
+            shade_opts = ["Všechny odstíny (Čistý základ)"]
         selected_shade = st.selectbox("3. Odstín (volitelně):", shade_opts)
     with c4:
         tinting_cost = st.number_input("Cena tónování (Kč)", value=0.0, step=5.0,
@@ -86,11 +100,11 @@ def render_calculations():
     st.markdown("---")
 
     # --- ANALÝZA A VÝPOČET ---
-    df_prod = df_inv[df_inv['base_code'] == selected_product].copy()
+    df_prod = df_inv[df_inv['base_code'] == selected_product].copy() if not df_inv.empty else pd.DataFrame()
 
     # Získání storage price (Nákladu) z databáze produktů (odhad přes shodu v názvu)
     p_storage = 0.0
-    if not df_products.empty:
+    if not df_products.empty and selected_product != "Žádná data":
         matches = df_products[df_products['name'].str.contains(selected_product, na=False)]
         if not matches.empty:
             p_storage = float(matches.iloc[0]['storage_price'])
