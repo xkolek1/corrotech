@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import re
-import datetime
 from db_manager import load_products, load_clients, get_db_connection
 from helpers import show_pdf
 from generate_hempel_pdf import get_hempel_pdfs
@@ -10,9 +9,7 @@ from generate_hempel_pdf import get_hempel_pdfs
 
 # --- CHYTRÝ PARSER HEMPEL KÓDŮ (V4) ---
 def parse_hempel_code(pid):
-    """Rozdělí produkty na Barvy, Tužidla a Ostatní, a přiřadí správné balení."""
     pid = str(pid).strip()
-
     if len(pid) < 10 or not pid[0].isdigit():
         return pid, "Jiné/Ostatní", "Bez odstínu", "Jiné/Ostatní balení"
 
@@ -103,7 +100,9 @@ def render_calculations():
 
     st.subheader("B2B Cenový Analytik")
 
-    # --- FILTRY ---
+    # =========================================================
+    # 1. FILTRY (Výchozí = Všechno)
+    # =========================================================
     c1, c2 = st.columns(2)
     with c1:
         client_list = ["Všichni klienti"] + sorted(
@@ -112,7 +111,7 @@ def render_calculations():
     with c2:
         prod_list = ["Všechny produkty"] + sorted(df_inv['base_code'].unique().tolist()) if not df_inv.empty else [
             "Všechny produkty"]
-        selected_product = st.selectbox("2. Produkt (Základ / Tužidlo / Ostatní):", prod_list)
+        selected_product = st.selectbox("2. Produkt (Základ / Tužidlo):", prod_list)
 
     df_prod = df_inv.copy()
     if selected_product != "Všechny produkty":
@@ -128,14 +127,11 @@ def render_calculations():
             raw_packs = sorted(df_prod['pack_size'].unique().tolist())
             pack_opts = ["Všechna balení"]
 
-            # 20L a 5L prioritně nahoře
-            if "20 L (Sada/Balení)" in raw_packs:
-                pack_opts.append("20 L (Sada/Balení)")
-                raw_packs.remove("20 L (Sada/Balení)")
-            if "5 L (Sada/Balení)" in raw_packs:
-                pack_opts.append("5 L (Sada/Balení)")
-                raw_packs.remove("5 L (Sada/Balení)")
-
+            # Priorita pro 20L a 5L
+            for priority_pack in ["20 L (Sada/Balení)", "5 L (Sada/Balení)"]:
+                if priority_pack in raw_packs:
+                    pack_opts.append(priority_pack)
+                    raw_packs.remove(priority_pack)
             pack_opts.extend(raw_packs)
         else:
             pack_opts = ["Všechna balení"]
@@ -144,10 +140,10 @@ def render_calculations():
 
     with c4:
         if product_category == "Barva (Hempel)" or selected_product == "Všechny produkty":
-            shade_opts = ["Všechny odstíny (Čistý základ)"] + sorted(df_prod['shade_name'].unique().tolist())
+            shade_opts = ["Všechny odstíny"] + sorted(df_prod['shade_name'].unique().tolist())
             selected_shade = st.selectbox("4. Odstín:", shade_opts)
         else:
-            selected_shade = "Všechny odstíny (Čistý základ)"
+            selected_shade = "Všechny odstíny"
             st.selectbox("4. Odstín:", [selected_shade], disabled=True)
 
     with c5:
@@ -159,69 +155,33 @@ def render_calculations():
 
     st.markdown("---")
 
-    # Aplikace filtrů pro analýzu
-    df_filtered = df_prod.copy()
-    if selected_client != "Všichni klienti":
-        df_filtered = df_filtered[df_filtered['client_name'] == selected_client]
-    if selected_pack != "Všechna balení":
-        df_filtered = df_filtered[df_filtered['pack_size'] == selected_pack]
-
-    is_base_view = (selected_shade == "Všechny odstíny (Čistý základ)")
-    if not is_base_view:
-        df_filtered = df_filtered[df_filtered['shade_name'] == selected_shade]
-
-    if product_category == "Barva (Hempel)":
-        df_filtered['base_price'] = df_filtered['price'] - tinting_cost
+    # =========================================================
+    # 2. TEMPOMAT (Zobrazí se POUZE když je vybrán produkt)
+    # =========================================================
+    if selected_product == "Všechny produkty":
+        st.info("ℹ️ Vyberte konkrétní produkt v rolovátku č. 2 pro zobrazení analytického tempomatu a výpočtu cen.")
     else:
-        df_filtered['base_price'] = df_filtered['price']
+        # Pro tempomat aplikujeme plnou kaskádu filtrů (potřebujeme konkrétní agregovanou cenu)
+        df_tempomat = df_prod.copy()
+        if selected_pack != "Všechna balení":
+            df_tempomat = df_tempomat[df_tempomat['pack_size'] == selected_pack]
+        if selected_shade != "Všechny odstíny":
+            df_tempomat = df_tempomat[df_tempomat['shade_name'] == selected_shade]
 
-    target_col = 'base_price' if is_base_view else 'price'
-
-    # 1. EXPANDER: Měsíční odběry (Timeseries)
-    with st.expander("📈 Měsíční odběry klienta (Obrat v Kč)", expanded=False):
-        if df_filtered.empty:
-            st.info("Pro tento výběr nejsou k dispozici žádná data o obratech.")
+        if product_category == "Barva (Hempel)":
+            df_tempomat['base_price'] = df_tempomat['price'] - tinting_cost
         else:
-            df_ts = df_filtered.copy()
-            df_ts['turnover'] = df_ts['price'] * df_ts['quantity']
-            df_ts['month_start'] = df_ts['purchase_date'].dt.to_period('M').dt.to_timestamp()
+            df_tempomat['base_price'] = df_tempomat['price']
 
-            monthly_sales = df_ts.groupby('month_start')['turnover'].sum().reset_index()
+        target_col = 'base_price' if selected_shade == "Všechny odstíny" else 'price'
 
-            cz_months = {1: 'Led', 2: 'Úno', 3: 'Bře', 4: 'Dub', 5: 'Kvě', 6: 'Čvn', 7: 'Čvc', 8: 'Srp', 9: 'Zář',
-                         10: 'Říj', 11: 'Lis', 12: 'Pro'}
-            monthly_sales['cz_month'] = monthly_sales['month_start'].dt.month.map(cz_months)
-            monthly_sales['year'] = monthly_sales['month_start'].dt.year.astype(str)
-
-            fig_sales = go.Figure(go.Bar(
-                x=[monthly_sales['year'], monthly_sales['cz_month']],
-                y=monthly_sales['turnover'],
-                text=monthly_sales['turnover'].apply(lambda x: f"{x:,.0f} Kč".replace(",", " ") if x > 0 else ""),
-                textposition='auto',
-                marker_color='#1f77b4'
-            ))
-
-            title_text = f"Vývoj odběrů: {selected_client}" if selected_client != "Všichni klienti" else "Celofiremní obrat (filtrovaný)"
-            fig_sales.update_layout(
-                title=title_text,
-                height=350,
-                margin=dict(l=20, r=20, t=40, b=20),
-                yaxis_title="Obrat (Kč)"
-            )
-            st.plotly_chart(fig_sales, use_container_width=True)
-
-    # 2. EXPANDER: Tempomat (pouze pro konkrétní produkt)
-    with st.expander("🎯 Vývoj ceny a Tempomat", expanded=False):
-        if selected_product == "Všechny produkty":
-            st.warning("⚠️ Vyberte konkrétní produkt v kroku 2 pro zobrazení cenového tempomatu a doporučených marží.")
-        elif df_filtered.empty:
-            st.info("Pro tento výběr nemáme k dispozici cenová data.")
+        if df_tempomat.empty:
+            st.warning("Pro zadanou kombinaci produktu, odstínu a balení nemáme historická data.")
         else:
-            global_min = df_filtered[target_col].min()
-            global_avg = df_filtered[target_col].mean()
-            global_max = df_filtered[target_col].max()
+            global_min = df_tempomat[target_col].min()
+            global_avg = df_tempomat[target_col].mean()
+            global_max = df_tempomat[target_col].max()
 
-            # Nákladová cena z DB
             p_storage = 0.0
             if not df_products.empty:
                 matches = df_products[df_products['name'].str.contains(selected_product.split()[0], na=False)]
@@ -232,7 +192,7 @@ def render_calculations():
 
             client_price = None
             if selected_client != "Všichni klienti":
-                df_client_only = df_filtered[df_filtered['client_name'] == selected_client].sort_values(
+                df_client_only = df_tempomat[df_tempomat['client_name'] == selected_client].sort_values(
                     by='purchase_date', ascending=False)
                 if not df_client_only.empty:
                     client_price = df_client_only.iloc[0][target_col]
@@ -242,7 +202,9 @@ def render_calculations():
             min_range = max(global_min, p_storage * 1.15)
             max_range = max(global_avg * 1.1, min_range * 1.2)
 
-            chart_title = f"{selected_product} {'(Čistý základ)' if is_base_view and product_category == 'Barva (Hempel)' else selected_shade}"
+            chart_title = f"{selected_product} {'(Čistý základ)' if selected_shade == 'Všechny odstíny' and product_category == 'Barva (Hempel)' else selected_shade}"
+            if selected_pack != "Všechna balení":
+                chart_title += f" [{selected_pack}]"
 
             g_fig = go.Figure(go.Indicator(
                 mode="gauge+number+delta",
@@ -261,11 +223,7 @@ def render_calculations():
                         {'range': [min_range, max_range], 'color': "rgba(75, 192, 192, 0.5)"},
                         {'range': [max_range, p_retail], 'color': "rgba(54, 162, 235, 0.4)"}
                     ],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 5},
-                        'thickness': 0.75,
-                        'value': gauge_val
-                    }
+                    'threshold': {'line': {'color': "black", 'width': 5}, 'thickness': 0.75, 'value': gauge_val}
                 }
             ))
             g_fig.update_layout(height=400, margin=dict(l=20, r=20, t=50, b=20))
@@ -284,41 +242,108 @@ def render_calculations():
             m4.metric("Historické DNO", f"{global_min:,.0f} Kč".replace(",", " "), "Pod toto nedávat!",
                       delta_color="inverse")
 
-    # 3. EXPANDER: Historická tabulka
-    with st.expander("📋 Historický výpis prodejů pro daný výběr", expanded=False):
-        if df_filtered.empty:
-            st.info("Pro zadané filtry nebyly nalezeny žádné faktury.")
+    st.markdown("---")
+
+    # =========================================================
+    # 3. HISTORICKÉ VÝPISY A GRAFY (Roletky)
+    # =========================================================
+
+    # Pomocná funkce pro podbarvení řádků v tabulkách na základě vybrané velikosti/odstínu
+    def highlight_rows(row):
+        shade_match = (selected_shade != "Všechny odstíny") and (row['Odstín'] == selected_shade)
+        pack_match = (selected_pack != "Všechna balení") and (row['Balení'] == selected_pack)
+
+        if shade_match and pack_match:
+            return ['background-color: rgba(46, 204, 113, 0.3)'] * len(row)  # Obě shody = tmavší zelená
+        elif shade_match or pack_match:
+            return ['background-color: rgba(46, 204, 113, 0.1)'] * len(row)  # Jedna shoda = velmi světlá zelená
+        return [''] * len(row)
+
+    def prepare_dataframe_for_display(df):
+        df_disp = df[
+            ['purchase_date', 'client_name', 'base_code', 'shade_name', 'pack_size', 'quantity', 'price']].copy()
+        df_disp['purchase_date'] = df_disp['purchase_date'].dt.strftime('%d. %m. %Y')
+        df_disp.rename(columns={
+            'purchase_date': 'Datum',
+            'client_name': 'Klient',
+            'base_code': 'Produkt',
+            'shade_name': 'Odstín',
+            'pack_size': 'Balení',
+            'quantity': 'Množ. (l/kg)',
+            'price': 'Cena/l'
+        }, inplace=True)
+        df_disp['Cena/l'] = df_disp['Cena/l'].apply(lambda x: f"{x:,.1f}")
+        if selected_product != "Všechny produkty":
+            df_disp.drop(columns=['Produkt'], inplace=True, errors='ignore')
+        return df_disp
+
+    # A. Historie trhu (Vždy dostupná)
+    # Tabulka se filtruje JEN podle produktu, max 100 řádků. Odstín a velikost jen zvýrazňují.
+    exp1_title = f"📋 Posledních 100 prodejů ({selected_product if selected_product != 'Všechny produkty' else 'Celý trh'})"
+    with st.expander(exp1_title, expanded=False):
+        df_market = df_prod.sort_values(by='purchase_date', ascending=False).head(100)
+        if df_market.empty:
+            st.info("Žádná historická data.")
         else:
-            df_disp = df_filtered[
-                ['purchase_date', 'client_name', 'base_code', 'shade_name', 'pack_size', 'quantity', 'price',
-                 'base_price']].copy()
-            df_disp['purchase_date'] = df_disp['purchase_date'].dt.strftime('%d. %m. %Y')
+            df_market_disp = prepare_dataframe_for_display(df_market)
+            st.dataframe(df_market_disp.style.apply(highlight_rows, axis=1), hide_index=True, use_container_width=True)
 
-            price_col_name = 'Očištěný základ / Kč' if product_category == "Barva (Hempel)" else 'Konečná cena / Kč'
+    # B + C. Klientské moduly (Odemknou se až po výběru klienta)
+    if selected_client != "Všichni klienti":
 
-            df_disp.rename(columns={
-                'purchase_date': 'Datum',
-                'client_name': 'Klient',
-                'base_code': 'Produkt',
-                'shade_name': 'Odstín',
-                'pack_size': 'Balení',
-                'quantity': 'Množství (l/kg)',
-                'price': 'Fakturová cena / Kč',
-                'base_price': price_col_name
-            }, inplace=True)
+        # B. Historie klienta
+        exp2_title = f"📋 Posledních 100 nákupů firmy: {selected_client} ({selected_product if selected_product != 'Všechny produkty' else 'Všechny produkty'})"
+        with st.expander(exp2_title, expanded=False):
+            df_client_hist = df_prod[df_prod['client_name'] == selected_client].sort_values(by='purchase_date',
+                                                                                            ascending=False).head(100)
+            if df_client_hist.empty:
+                st.info("Klient tento produkt historicky nekoupil.")
+            else:
+                df_client_disp = prepare_dataframe_for_display(df_client_hist)
+                # Zde skryjeme i sloupec Klient, protože se díváme jen na něj
+                df_client_disp.drop(columns=['Klient'], inplace=True, errors='ignore')
+                st.dataframe(df_client_disp.style.apply(highlight_rows, axis=1), hide_index=True,
+                             use_container_width=True)
 
-            df_disp['Fakturová cena / Kč'] = df_disp['Fakturová cena / Kč'].apply(lambda x: f"{x:,.1f}")
-            df_disp[price_col_name] = df_disp[price_col_name].apply(lambda x: f"{x:,.1f}")
+        # C. Vývoj obratu (Od Října 2021 do současnosti)
+        with st.expander(f"📈 Vývoj celkového obratu: {selected_client} (Od Října 2021)", expanded=False):
+            # Pro obrat bereme VŽDY všechny produkty klienta, bez ohledu na výběr produktu výše
+            df_ts = df_inv[
+                (df_inv['client_name'] == selected_client) & (df_inv['purchase_date'] >= '2021-10-01')].copy()
+            if df_ts.empty:
+                st.info("Pro tohoto klienta nejsou od října 2021 žádná data o obratech.")
+            else:
+                df_ts['turnover'] = df_ts['price'] * df_ts['quantity']
+                df_ts['month_start'] = df_ts['purchase_date'].dt.to_period('M').dt.to_timestamp()
 
-            # Pokud máme vybrán konkrétní produkt, skryjeme jeho sloupec v tabulce pro čistší zobrazení
-            if selected_product != "Všechny produkty":
-                df_disp.drop(columns=['Produkt'], inplace=True)
+                monthly_sales = df_ts.groupby('month_start')['turnover'].sum().reset_index()
 
-            st.dataframe(df_disp.sort_values(by='Datum', ascending=False), hide_index=True, use_container_width=True)
+                cz_months = {1: 'Led', 2: 'Úno', 3: 'Bře', 4: 'Dub', 5: 'Kvě', 6: 'Čvn', 7: 'Čvc', 8: 'Srp', 9: 'Zář',
+                             10: 'Říj', 11: 'Lis', 12: 'Pro'}
+                monthly_sales['cz_month'] = monthly_sales['month_start'].dt.month.map(cz_months)
+                monthly_sales['year'] = monthly_sales['month_start'].dt.year.astype(str)
+
+                fig_sales = go.Figure(go.Bar(
+                    x=[monthly_sales['year'], monthly_sales['cz_month']],
+                    y=monthly_sales['turnover'],
+                    text=monthly_sales['turnover'].apply(lambda x: f"{x:,.0f} Kč".replace(",", " ") if x > 0 else ""),
+                    textposition='auto',
+                    marker_color='#1f77b4'
+                ))
+
+                fig_sales.update_layout(
+                    title=f"Měsíční obrat klienta: {selected_client}",
+                    height=350,
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    yaxis_title="Obrat (Kč)"
+                )
+                st.plotly_chart(fig_sales, use_container_width=True)
 
     st.markdown("---")
 
-    # --- GENERÁTOR PDF CENÍKU ---
+    # =========================================================
+    # 4. GENERÁTOR PDF CENÍKU
+    # =========================================================
     st.subheader("Hempel – Barevný ceník RAL")
     pdf_type = st.radio("Formát ceníku:", ["Digital (dlouhá obrazovka pro e-mail)", "Print (A4 na šířku pro tisk)"])
 
@@ -326,14 +351,12 @@ def render_calculations():
         with st.spinner("Generuji PDF soubory..."):
             try:
                 pdfs = get_hempel_pdfs("hempel_export/hempel_colors.csv")
-
                 if "Digital" in pdf_type:
                     st.session_state["hempel_pdf_bytes"] = pdfs["digital"]
                     st.session_state["hempel_pdf_name"] = "hempel_cenik_digital.pdf"
                 else:
                     st.session_state["hempel_pdf_bytes"] = pdfs["print"]
                     st.session_state["hempel_pdf_name"] = "hempel_cenik_tisk.pdf"
-
             except Exception as e:
                 st.error(f"Chyba při generování Hempel ceníku: {e}")
 
